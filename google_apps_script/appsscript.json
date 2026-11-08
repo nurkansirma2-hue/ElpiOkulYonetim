@@ -1,0 +1,7 @@
+{
+  "timeZone": "Europe/Istanbul",
+  "runtimeVersion": "V8",
+  "exceptionLogging": "STACKDRIVER",
+  "oauthScopes": ["https://www.googleapis.com/auth/forms"],
+  "executionApi": {"access": "MYSELF"}
+}

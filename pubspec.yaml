@@ -1,0 +1,68 @@
+name: elpi_okul_yonetim
+description: Okul Yönetim Sistemi
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.10.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.6
+
+  http: ^1.2.1
+  http_parser: ^4.0.2
+  google_sign_in: ^6.2.2
+  url_launcher: ^6.3.1
+  crypto: ^3.0.3
+
+  shared_preferences: ^2.2.3
+
+  file_picker: ^8.1.7
+
+  pdf: ^3.10.7
+  printing: ^5.11.0
+
+  intl: ^0.19.0
+
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  sqflite: ^2.4.2
+
+  open_file: ^3.5.11
+
+  excel: ^2.1.0
+  excel2003: ^1.0.0
+  spreadsheet_decoder: ^2.3.0
+
+  archive: ^3.6.1
+  xml: ^6.6.1
+  office_oxide_ffi: ^0.1.2+1
+
+  pdfx: 2.11.0
+  pdfium_flutter: 0.2.3
+  ffi: 2.2.0
+  rar: 0.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^3.0.2
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/fonts/
+    - assets/baslangic_belgeleri/
+
+  fonts:
+    - family: NotoSans
+      fonts:
+        - asset: assets/fonts/NotoSans-Regular.ttf
+        - asset: assets/fonts/NotoSans-Bold.ttf
+          weight: 700

@@ -1,0 +1,62 @@
+# ===============================
+# 🔥 FLUTTER / DART
+# ===============================
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+
+# ===============================
+# 🔥 ANDROID
+# ===============================
+android/.gradle/
+android/app/build/
+android/local.properties
+android/gradlew
+android/gradlew.bat
+android/gradle-wrapper.jar
+android/.cxx/
+android/captures/
+
+# ===============================
+# 🔥 IOS (kullanmıyorsan sorun değil)
+# ===============================
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+
+# ===============================
+# 🔥 IDE DOSYALARI
+# ===============================
+.idea/
+.vscode/
+*.iml
+
+# ===============================
+# 🔥 LOG / TEMP
+# ===============================
+*.log
+*.tmp
+*.bak
+
+# ===============================
+# 🔥 GÜVENLİK (EN KRİTİK)
+# ===============================
+# 🔐 LOCAL CONFIG
+lib/core/app_config.dart
+
+# 🔐 ENV
+*.env
+
+# 🔐 KEYSTORE
+key.properties
+**/*.keystore
+**/*.jks
+
+# ===============================
+# 🔥 DİĞER
+# ===============================
+GeneratedPluginRegistrant.java
+.cxx/
