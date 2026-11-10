@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 chcp 65001 >nul
 title ElpiOkulYonetim - GitHub Senkronizasyon
-rem SYNC_VERSION: 10
+rem SYNC_VERSION: 11
 set "SYNC_BAT=%~f0"
 set "SYNC_PS=%TEMP%\ElpiOkulYonetim_Sync_%RANDOM%_%RANDOM%.ps1"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $s=[IO.File]::ReadAllText($env:SYNC_BAT); $m=[regex]::Match($s,'(?m)^#===POWERSHELL_BASLANGIC===\r?$'); if(!$m.Success){throw 'Gomulu betik bulunamadi'}; [IO.File]::WriteAllText($env:SYNC_PS,$s.Substring($m.Index+$m.Length),[Text.UTF8Encoding]::new($true))"
@@ -43,10 +43,27 @@ function Note([string]$text) {
     Write-Host $text
 }
 function Git([string[]]$a) {
-    # PS 5.1 stderr davranisi nedeniyle ciktiyi birlestirmiyoruz.
-    $result = @(& git.exe -c core.quotepath=false @a)
-    if ($LASTEXITCODE -ne 0) { throw ('Git komutu basarisiz: git ' + ($a -join ' ')) }
-    return $result
+    # GitHub bazen "Empty reply from server" dondurur. HTTP/1.1 ve
+    # gecici baglanti hatalarinda en fazla 3 deneme; global Git ayari degismez.
+    $network = $a.Count -gt 0 -and $a[0] -in @('ls-remote','fetch','push')
+    $attempts = if ($network) { 3 } else { 1 }
+    for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+        if ($network) {
+            $result = @(& git.exe -c core.quotepath=false -c http.version=HTTP/1.1 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=30 @a)
+        } else {
+            $result = @(& git.exe -c core.quotepath=false @a)
+        }
+        $code = $LASTEXITCODE
+        if ($code -eq 0) { return $result }
+        if ($attempt -lt $attempts) {
+            Note ("GitHub erisim denemesi $attempt/$attempts basarisiz; yeniden deneniyor...")
+            Start-Sleep -Seconds (2 * $attempt)
+        }
+    }
+    if ($network) {
+        throw ('GitHub baglantisi basarisiz (kod ' + $code + '): git ' + ($a -join ' ') + '. Tarayicida GitHub acilsa bile Git ag/proxy/VPN ayarlari farkli olabilir. CMD uzerinden git -c http.version=HTTP/1.1 ls-remote origin HEAD komutuyla test edin.')
+    }
+    throw ('Git komutu basarisiz (kod ' + $code + '): git ' + ($a -join ' '))
 }
 function GitText([string[]]$a) { return ((Git $a) -join "`n").Trim() }
 function HasHead {
@@ -270,17 +287,31 @@ try {
     CheckHistory $range
     $count = [int](GitText @('rev-list','--count',$range))
     if ($count -gt 0) {
-        # Force push yok. Arada uzak dal degisirse Git gonderimi reddeder.
-        Git @('push','--set-upstream','origin',("HEAD:refs/heads/$branch")) | Out-Host
-        $pushedCommits = $count
+        Note ("GitHub'a gonderilmeyi bekleyen commit: $count; dal: $branch")
+        $confirmation = (Read-Host "GitHub'a gondermek icin YAZ yazin (iptal: Enter)").Trim()
+        if ($confirmation -cne 'YAZ') {
+            Note 'GitHub gonderimi onaylanmadi. Yerel commitler korundu; push yapilmadi.'
+            $exitCode = 0
+        } else {
+            # Force push yok. Arada uzak dal degisirse Git gonderimi reddeder.
+            Git @('push','--set-upstream','origin',("HEAD:refs/heads/$branch")) | Out-Host
+            $pushedCommits = $count
+        }
     }
     $step = 'Son kontrol'
-    $remoteHead = @(Git @('ls-remote','--heads','origin',"refs/heads/$branch"))
-    if ($remoteHead.Count -ne 1 -or ($remoteHead[0] -split "`t",2)[0] -ne (GitText @('rev-parse','HEAD'))) {
-        throw 'Son kontrolde yerel ve uzak dal esit degil. Tekrar senkronizasyon gerekli.'
+    if ($count -eq 0 -or $pushedCommits -gt 0) {
+        $remoteHead = @(Git @('ls-remote','--heads','origin',"refs/heads/$branch"))
+        if ($remoteHead.Count -ne 1 -or ($remoteHead[0] -split "`t",2)[0] -ne (GitText @('rev-parse','HEAD'))) {
+            throw 'Son kontrolde yerel ve uzak dal esit degil. Tekrar senkronizasyon gerekli.'
+        }
     }
-    Note ('BASARILI: ' + $pushedCommits + ' commit gonderildi. Dal: ' + $branch)
-    Note 'Kaynaklar senkronize edildi; bu islem Flutter analiz/test veya APK kurulumu yapmaz.'
+    if ($count -gt 0 -and $pushedCommits -eq 0) {
+        Note 'TAMAMLANDI: Yerel commitler hazir, ancak GitHub gonderimi yapilmadi.'
+    } else {
+        Note ('BASARILI: ' + $pushedCommits + ' commit gonderildi. Dal: ' + $branch)
+    }
+    if ($count -eq 0 -or $pushedCommits -gt 0) { Note 'GitHub senkronizasyonu kontrol edildi. Flutter analiz/test veya APK kurulumu yapilmaz.' }
+    else { Note 'GitHub senkronizasyonu tamamlanmadi; push onayi verilmedi.' }
     $exitCode = 0
 } catch {
     Note ('HATA (' + $step + '): ' + $_.Exception.Message)
