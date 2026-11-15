@@ -1003,7 +1003,10 @@ void main() {
         await fs.googleBagla(fb, fid, 'sonuclandirma-form', {
           for (final q in qs) q['AlanAnahtari'] as String: 'q${q['Id']}',
         });
-        await tamDagitim();
+        await yanit(1, [1, 2, 3]);
+        await yanit(2, [2, 1, 3]);
+        await yanit(3, [3, 1, 2]);
+        await onay();
         await ogretmenEkle('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1);
       } finally {
         hazir = true;
@@ -1066,8 +1069,23 @@ void main() {
     await bekle();
     expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
     await capture('400-5-degerlendirme-hazir');
-    await tester.tap(find.text('Kontenjan kullan'));
+    expect(find.text('Kontenjan kullan'), findsNothing);
+    await tester.tap(find.text('Dağıtım Kriterleri'));
     await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.widgetWithText(SwitchListTile, 'Kontenjan kullan'),
+          )
+          .value,
+      true,
+    );
+    expect(
+      tester
+          .widgetList<TextFormField>(find.byType(TextFormField))
+          .map((a) => a.initialValue),
+      ['3', '3', '3'],
+    );
     for (var i = 0; i < 3; i++) {
       final alan = find.byType(TextFormField).at(i);
       await tester.ensureVisible(alan);
@@ -1253,10 +1271,10 @@ void main() {
       );
       await bekle();
       await capture('${width.toInt()}-ana-proje-listesi');
-      await tester.tap(find.byKey(const ValueKey('proje-ana-dagitim')));
+      expect(find.byKey(const ValueKey('proje-ana-dagitim')), findsNothing);
+      await tester.tap(find.text('Proje'));
       await bekle();
-      expect(find.text('Dağıtılacak proje formunu seçin'), findsOneWidget);
-      await tester.tap(find.text('Proje • 3 öğrenci'));
+      await tester.tap(find.text('Değerlendirme'));
       await bekle();
       expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
       await tester.tap(find.byTooltip('Proje taleplerine dön'));
@@ -1286,7 +1304,7 @@ void main() {
         await tester.tap(find.byTooltip('Proje taleplerine dön'));
         await bekle();
         expect(find.text('Seçilenleri Sil (2)'), findsNothing);
-        expect(find.byKey(const ValueKey('proje-ana-dagitim')), findsOneWidget);
+        expect(find.byKey(const ValueKey('proje-ana-dagitim')), findsNothing);
       } else {
         g.hataliFormlar.add(diger);
         await tester.tap(find.text('Seçilenleri Sil (2)'));

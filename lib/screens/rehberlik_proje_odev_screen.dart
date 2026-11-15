@@ -84,7 +84,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   Map<String, dynamic>? analiz;
   Map<String, Object?>? form;
   String? hata, sonuc, link;
-  bool busy = true, yeni = false, kontenjan = false, sadeceHata = false;
+  bool busy = true, yeni = false, kontenjan = true, sadeceHata = false;
   int adim = 0, ekran = 0, sekme = 0;
   int? yerelForm;
   DateTime? sonGun;
@@ -215,7 +215,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
         sonuc = 'Yanıt veya kayıt değişti. Dağıtımı yeniden hazırlayın.';
       }
       for (final id in projeDersleri.keys) {
-        kapasite.putIfAbsent(id, () => (proje!['ogrenciler'] as List).length);
+        kapasite.putIfAbsent(id, () => 3);
       }
       onaySecimi.removeWhere(
         (id, imza) => !tercihler.any(
@@ -231,6 +231,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   Future<void> _yeni() async {
     _formSeciminiKapat();
     kapasite.clear();
+    kontenjan = true;
     _kriterDegisti();
     await _kontrol();
     final ms = MesajlasmaService.instance;
@@ -484,48 +485,20 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     await _yukle();
     if (proje == null) throw StateError('Form artık listede bulunmuyor.');
     final guncel = proje!;
-    kontenjan = (guncel['kontenjan'] as Map).isNotEmpty;
+    kontenjan =
+        (guncel['kontenjan'] as Map).isNotEmpty ||
+        guncel['dagitimOnayli'] != true;
     kapasite
       ..clear()
       ..addEntries(
         projeDersleri.keys.map(
-          (id) => MapEntry(
-            id,
-            (guncel['kontenjan'] as Map)['$id'] as int? ??
-                (guncel['ogrenciler'] as List).length,
-          ),
+          (id) =>
+              MapEntry(id, (guncel['kontenjan'] as Map)['$id'] as int? ?? 3),
         ),
       );
     mesaj.text =
         guncel['mesajMetni'] as String? ??
         '${_davetMetni(guncel)}\n\nForm Linki: {FormBaglantisi}';
-  }
-
-  Future<void> _anaDagitim() async {
-    await _yukle();
-    if (talepler.isEmpty) throw StateError('Önce proje formu oluşturun.');
-    Map<String, dynamic>? secilen;
-    if (talepler.length == 1) {
-      secilen = talepler.single;
-    } else {
-      if (!mounted) return;
-      secilen = await showDialog<Map<String, dynamic>>(
-        context: context,
-        builder: (c) => SimpleDialog(
-          title: const Text('Dağıtılacak proje formunu seçin'),
-          children: [
-            for (final p in talepler)
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(c, p),
-                child: Text(
-                  '${p['baslik']} • ${(p['ogrenciler'] as List).length} öğrenci',
-                ),
-              ),
-          ],
-        ),
-      );
-    }
-    if (secilen != null) await _formAc(secilen, islem: 3);
   }
 
   Future<void> _formlariSil() async {
@@ -2205,96 +2178,123 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
           ],
         ),
         if (dagitimAsamasi == 0) ...[
-          _kart('Dağıtım Kriterleri', Icons.settings_outlined, [
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Kontenjan kullan'),
-              value: kontenjan,
-              onChanged: salt || busy
-                  ? null
-                  : (v) => setState(() {
-                      kontenjan = v;
-                      _kriterDegisti();
-                    }),
-            ),
-            const Text('Her dersin alabileceği en fazla öğrenci sayısı.'),
-            const SizedBox(height: 8),
-            Row(
+          Card(
+            child: ExpansionTile(
+              key: ValueKey('dagitim-kriterleri-$formId'),
+              initiallyExpanded: false,
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Dağıtım Kriterleri'),
               children: [
-                const Expanded(child: Text('Ders')),
-                Text(kontenjan ? 'Maks. öğrenci' : 'Kontenjan'),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Kontenjan kullan'),
+                        value: kontenjan,
+                        onChanged: salt || busy
+                            ? null
+                            : (v) => setState(() {
+                                kontenjan = v;
+                                _kriterDegisti();
+                              }),
+                      ),
+                      const Text(
+                        'Her dersin alabileceği en fazla öğrenci sayısı.',
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Expanded(child: Text('Ders')),
+                          Text(kontenjan ? 'Maks. öğrenci' : 'Kontenjan'),
+                        ],
+                      ),
+                      const Divider(),
+                      for (final e in projeDersleri.entries)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Expanded(child: Text(e.value)),
+                              if (kontenjan) ...[
+                                IconButton(
+                                  tooltip: '${e.value} kontenjanını azalt',
+                                  onPressed:
+                                      salt ||
+                                          busy ||
+                                          (kapasite[e.key] ?? 0) == 0
+                                      ? null
+                                      : () => setState(() {
+                                          kapasite[e.key] =
+                                              (kapasite[e.key] ?? 0) - 1;
+                                          kapasiteSurumu++;
+                                          _kriterDegisti();
+                                        }),
+                                  icon: const Icon(Icons.remove_circle_outline),
+                                ),
+                                SizedBox(
+                                  width: 42,
+                                  child: TextFormField(
+                                    key: ValueKey(
+                                      'kapasite-${e.key}-$kapasiteSurumu',
+                                    ),
+                                    initialValue: '${kapasite[e.key] ?? 0}',
+                                    enabled: !salt && !busy,
+                                    textAlign: TextAlign.center,
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly,
+                                      LengthLimitingTextInputFormatter(4),
+                                    ],
+                                    decoration: const InputDecoration(
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                    ),
+                                    onChanged: (v) {
+                                      setState(() {
+                                        kapasite[e.key] = int.tryParse(v) ?? 0;
+                                        _kriterDegisti();
+                                      });
+                                    },
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: '${e.value} kontenjanını artır',
+                                  onPressed: salt || busy
+                                      ? null
+                                      : () => setState(() {
+                                          kapasite[e.key] =
+                                              (kapasite[e.key] ?? 0) + 1;
+                                          kapasiteSurumu++;
+                                          _kriterDegisti();
+                                        }),
+                                  icon: const Icon(Icons.add_circle_outline),
+                                ),
+                              ] else
+                                const Text('Sınırsız'),
+                            ],
+                          ),
+                        ),
+                      const Divider(),
+                      Text(
+                        kontenjan
+                            ? 'Toplam kapasite: ${kapasite.values.fold<int>(0, (a, b) => a + b)}'
+                            : 'Kontenjan sınırı yok.',
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        '• Önce 1., sonra 2. ve 3. tercihler\n• Her öğrenciye 1 proje dersi\n• Eşitlikte okul numarası sırası',
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
-            const Divider(),
-            for (final e in projeDersleri.entries)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Expanded(child: Text(e.value)),
-                    if (kontenjan) ...[
-                      IconButton(
-                        tooltip: '${e.value} kontenjanını azalt',
-                        onPressed: salt || busy || (kapasite[e.key] ?? 0) == 0
-                            ? null
-                            : () => setState(() {
-                                kapasite[e.key] = (kapasite[e.key] ?? 0) - 1;
-                                kapasiteSurumu++;
-                                _kriterDegisti();
-                              }),
-                        icon: const Icon(Icons.remove_circle_outline),
-                      ),
-                      SizedBox(
-                        width: 42,
-                        child: TextFormField(
-                          key: ValueKey('kapasite-${e.key}-$kapasiteSurumu'),
-                          initialValue: '${kapasite[e.key] ?? 0}',
-                          enabled: !salt && !busy,
-                          textAlign: TextAlign.center,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(4),
-                          ],
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(vertical: 8),
-                          ),
-                          onChanged: (v) {
-                            setState(() {
-                              kapasite[e.key] = int.tryParse(v) ?? 0;
-                              _kriterDegisti();
-                            });
-                          },
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: '${e.value} kontenjanını artır',
-                        onPressed: salt || busy
-                            ? null
-                            : () => setState(() {
-                                kapasite[e.key] = (kapasite[e.key] ?? 0) + 1;
-                                kapasiteSurumu++;
-                                _kriterDegisti();
-                              }),
-                        icon: const Icon(Icons.add_circle_outline),
-                      ),
-                    ] else
-                      const Text('Sınırsız'),
-                  ],
-                ),
-              ),
-            const Divider(),
-            Text(
-              kontenjan
-                  ? 'Toplam kapasite: ${kapasite.values.fold<int>(0, (a, b) => a + b)}'
-                  : 'Kontenjan sınırı yok.',
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              '• Önce 1., sonra 2. ve 3. tercihler\n• Her öğrenciye 1 proje dersi\n• Eşitlikte okul numarası sırası',
-            ),
-          ]),
+          ),
           if (sorunlu > 0 || bekleyen > 0)
             _bilgi(
               '$sorunlu hatalı yanıt ve $bekleyen bekleyen öğrenci dağıtıma alınmaz.',
@@ -2700,22 +2700,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               if (ekran == 3) _dagitim(),
               if (ekran == 4) _raporlar(),
             ] else ...[
-              if (!formSecimModu && talepler.isNotEmpty)
-                Card(
-                  child: ListTile(
-                    key: const ValueKey('proje-ana-dagitim'),
-                    leading: Icon(
-                      Icons.school_outlined,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    title: const Text('Ders Dağıtımı'),
-                    subtitle: const Text(
-                      'Kontenjan, ön izleme ve dağıtım onayı',
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: busy ? null : () => _is(_anaDagitim),
-                  ),
-                ),
               if (formSecimModu)
                 Row(
                   children: [

@@ -144,3 +144,13 @@ Doğrulama: proje dosyasında **22 test başarılı**; ekran ve test dosyasını
 Görsel karşılaştırma: gerçek Flutter kriter/ön izleme/manuel renderları 400 px normal ve değerlendirme/manuel görünümleri 320 px büyük yazıda kontrol edilir. Referanstaki bölüm sırası, doluluk bilgisi ve sabit alt eylemler uygulanır. Mevcut ortak tema, AppBar ve işlem menüsü korunur; uzun dersler ve büyük yazıda içerik kayar, alt eylemler sarılır. Örnek 30/28 sayıları sabitlenmez. Piksel birebirlik iddiası yoktur. Kanıtlar: `test-artifacts/proje-yeni-degerlendirme-test.txt`, `test-artifacts/proje/*yeni-degerlendirme*.png` ve `*-5-degerlendirme.png`.
 
 Tam kaynaklar: `lib/screens/rehberlik_proje_odev_screen.dart`, `test/rehberlik_proje_odev_test.dart` ve bu rapor. Yerel uygulama ve doğrulamaların ardından kullanıcı bu kapsam için **YAZ** onayı verdi. Yalnız bu üç dosya commit/push kapsamındadır; test günlükleri ve ekran görüntüleri yerelde tutulur. Manuel CI veya APK işlemi başlatılmaz.
+
+## Kapalı kriterler, varsayılan kontenjan ve ana sayfa sadeleştirmesi — yerel çalışma
+
+`d64dd43` sonrasında **Dağıtım Kriterleri**, başlığına dokunularak açılıp kapanan ortak `ExpansionTile` görünümüne dönüştürüldü. Form açılışında kapalı gelir. Yeni/henüz dağıtımı onaylanmamış formlarda **Kontenjan kullan** seçilidir ve her ders için başlangıç azami öğrenci sayısı **3** olur. Önceden onaylanmış kontenjan değerleri ve açıkça kaydedilmiş sınırsız dağıtımlar korunur; varsayılan değişikliği mevcut kesin sonuçları değiştirmez.
+
+Form Talepleri ana sayfasındaki **Ders Dağıtımı** kartı ve ona özgü form seçme yönlendirmesi kaldırıldı. Dağıtım işlemleri formun Değerlendirme sekmesinde ve mevcut işlem menüsünde erişilebilir kalır. Form kartları, uzun basarak seçim/silme ve alt eylemler korunur.
+
+Ekran testleri kriterlerin kapalı gelmesini, açıldığında kontenjanın seçili ve üç ders değerinin `3` olmasını, ana sayfada dağıtım kartının bulunmamasını ve mevcut otomatik/manuel dağıtım, kayıt, sonuçlandırma/mesaj ve form silme akışlarını denetler. **22 test başarılı**. Günlük: `test-artifacts/proje-kriter-varsayilan-test.txt`. Değişen ekran/test dosyalarının doğrudan Dart analizi temiz; fark kontrolü temiz. 320/400 px Flutter renderları incelendi. Kullanıcı veritabanı ve şema değiştirilmedi; APK derlenmedi.
+
+Değişen tam dosyalar: proje ekranı, proje test dosyası ve bu rapor. Yerel uygulama ve doğrulamaların ardından kullanıcı bu kapsam için **YAZ** onayı verdi. Yalnız bu üç dosya commit/push kapsamındadır; test günlükleri ve ekran görüntüleri yerelde tutulur. Manuel CI veya APK işlemi başlatılmaz.
