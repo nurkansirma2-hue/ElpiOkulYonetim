@@ -12,6 +12,7 @@ import 'rehberlik_kayit_editor.dart';
 import 'mesaj_form_screen.dart';
 import 'bilgi_toplama_ogretmen_gorus_screen.dart';
 import 'mesajlasma_screen.dart';
+import 'rehberlik_proje_odev_screen.dart';
 
 class BireyselRehberlikDosyasiScreen extends StatefulWidget {
   const BireyselRehberlikDosyasiScreen({
@@ -504,6 +505,20 @@ class _DosyaState extends State<BireyselRehberlikDosyasiScreen>
                         if (!_islem) setState(() => _bolum = i);
                       },
                     ),
+                  AnaMenuKart(
+                    icon: Icons.assignment_turned_in_outlined,
+                    baslik: 'Proje Ödevleri',
+                    onTap: _islem
+                        ? null
+                        : () => _ac(
+                            RehberlikProjeOdevScreen(
+                              service: widget.service,
+                              baglam: widget.baglam,
+                              atama: widget.atama,
+                              saltOkunur: _saltOkunur,
+                            ),
+                          ),
+                  ),
                   if (!_saltOkunur)
                     AnaMenuKart(
                       icon: Icons.assignment_outlined,

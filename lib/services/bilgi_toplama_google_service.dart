@@ -67,7 +67,11 @@ class BilgiToplamaGoogleService {
           'required': s['Zorunlu'] == 1,
           if (tur == 'Secenek' || tur == 'EvetHayir')
             'choiceQuestion': {
-              'type': s['AlanAnahtari'] == 'ogrenciSecimi'
+              'type':
+                  s['AlanAnahtari'] == 'ogrenciSecimi' ||
+                      RegExp(
+                        r'^projeTercih[123]$',
+                      ).hasMatch(s['AlanAnahtari'].toString())
                   ? 'DROP_DOWN'
                   : 'RADIO',
               'shuffle': false,
@@ -144,6 +148,7 @@ class BilgiToplamaGoogleService {
     int id,
     String token, {
     String? kurtarilacakId,
+    String? aciklama,
   }) async {
     final headers = _headers(token);
     final f = await yerel.formGetir(b, id);
@@ -201,6 +206,13 @@ class BilgiToplamaGoogleService {
               headers: headers,
               body: jsonEncode({
                 'requests': [
+                  if (aciklama != null)
+                    {
+                      'updateFormInfo': {
+                        'info': {'description': aciklama},
+                        'updateMask': 'description',
+                      },
+                    },
                   for (var i = 0; i < ss.length; i++)
                     {
                       'createItem': {
@@ -216,6 +228,12 @@ class BilgiToplamaGoogleService {
       remote = await durum(token, gid);
     }
     dogrula(remote, ss);
+    if (aciklama != null &&
+        (remote['info'] as Map?)?['description'] != aciklama) {
+      throw StateError(
+        'Google form açıklaması doğrulanamadı. Mevcut taslağı sürdürün.',
+      );
+    }
     await yerel.googleBagla(b, id, gid, {
       for (final s in ss)
         s['AlanAnahtari'] as String: (s['Id'] as int)

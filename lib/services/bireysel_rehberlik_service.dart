@@ -17,6 +17,7 @@ part 'rehberlik_modul_service.dart';
 part 'rehberlik_form_toplu_kayit.dart';
 part 'rehberlik_google_form_kaydi.dart';
 part 'ogretmen_gorus_kaydi.dart';
+part 'rehberlik_proje_odev_service.dart';
 
 class BireyselRehberlikBaglami {
   const BireyselRehberlikBaglami({
