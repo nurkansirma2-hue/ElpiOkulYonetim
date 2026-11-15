@@ -69,6 +69,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   final onaySecimi = <int, String>{};
   final yanitSecimi = <int, String>{};
   bool yanitSecimModu = false;
+  bool formSecimModu = false;
+  final formSecimi = <int>{};
   String? silmeIlerleme;
   bool silmeDurdur = false;
   List<Map<String, Object?>> hamYanitlar = [];
@@ -170,9 +172,17 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   Future<void> _yukle() async {
     await _kontrol(yazma: false);
     talepler = await widget.service.projeTalepleri(b, atama);
+    formSecimi.removeWhere((id) => !talepler.any((p) => p['formId'] == id));
     dersler = await widget.service.projeDersleri(b, atama);
     ogrenciler = await widget.service.sinifOgrencileri(b, atama);
     if (proje != null) {
+      if (!talepler.any((p) => p['formId'] == formId)) {
+        proje = null;
+        plan = null;
+        analiz = null;
+        _yanitSeciminiKapat();
+        return;
+      }
       proje = talepler.singleWhere((p) => p['formId'] == formId);
       form = await fs.formGetir(fb!, formId);
       link = proje!['formLinki'] as String?;
@@ -196,6 +206,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   }
 
   Future<void> _yeni() async {
+    _formSeciminiKapat();
     await _kontrol();
     final ms = MesajlasmaService.instance;
     final mb = await ms.hazirla();
@@ -422,6 +433,142 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
 
   Future<String> _token() =>
       widget.hesapBagla?.call() ?? OrtakGoogleOturumService.token();
+
+  void _formSeciminiKapat() {
+    formSecimModu = false;
+    formSecimi.clear();
+  }
+
+  void _formSec(int id) => setState(() {
+    formSecimModu = true;
+    if (!formSecimi.add(id)) formSecimi.remove(id);
+  });
+
+  Future<void> _formAc(Map<String, dynamic> p, {int islem = 1}) async {
+    _formSeciminiKapat();
+    _yanitSeciminiKapat();
+    onaySecimi.clear();
+    sekme = 0;
+    proje = p;
+    ekran = islem;
+    plan = null;
+    await _yukle();
+    if (proje == null) throw StateError('Form artık listede bulunmuyor.');
+    final guncel = proje!;
+    kontenjan = (guncel['kontenjan'] as Map).isNotEmpty;
+    kapasite
+      ..clear()
+      ..addEntries(
+        projeDersleri.keys.map(
+          (id) => MapEntry(
+            id,
+            (guncel['kontenjan'] as Map)['$id'] as int? ??
+                (guncel['ogrenciler'] as List).length,
+          ),
+        ),
+      );
+    mesaj.text =
+        guncel['mesajMetni'] as String? ??
+        '${_davetMetni(guncel)}\n\nForm Linki: {FormBaglantisi}';
+  }
+
+  Future<void> _anaDagitim() async {
+    await _yukle();
+    if (talepler.isEmpty) throw StateError('Önce proje formu oluşturun.');
+    Map<String, dynamic>? secilen;
+    if (talepler.length == 1) {
+      secilen = talepler.single;
+    } else {
+      if (!mounted) return;
+      secilen = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (c) => SimpleDialog(
+          title: const Text('Dağıtılacak proje formunu seçin'),
+          children: [
+            for (final p in talepler)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(c, p),
+                child: Text(
+                  '${p['baslik']} • ${(p['ogrenciler'] as List).length} öğrenci',
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+    if (secilen != null) await _formAc(secilen, islem: 3);
+  }
+
+  Future<void> _formlariSil() async {
+    await _kontrol();
+    final ids = Set<int>.of(formSecimi);
+    final guncel = await widget.service.projeTalepleri(b, atama);
+    if (ids.isEmpty ||
+        !ids.every((id) => guncel.any((p) => p['formId'] == id))) {
+      throw StateError('Seçilen formlar değişti. Listeyi yenileyin.');
+    }
+    if (!mounted ||
+        !await _onay(
+          'Seçili proje formlarını sil',
+          '${ids.length} form uygulama listesinden kaldırılacak. Google formları yanıtlara kapatılacak; henüz alınmamış olanlar dahil bütün yanıtları kalıcı olarak silinecek. '
+              'Tercih ve dağıtım sonuçları artık kullanılamayacak. Öğrenci kayıtları ve Belgelerim’deki raporlar korunur. '
+              'Google’daki boş form şablonu, bağlı E-Tablo kopyaları ve eski yedekler kalır. Devam edilsin mi?',
+        )) {
+      return;
+    }
+    var silinen = 0;
+    final hatalar = <String>[];
+    String? token;
+    silmeDurdur = false;
+    try {
+      for (final id in ids) {
+        if (!mounted || silmeDurdur) break;
+        setState(
+          () => silmeIlerleme =
+              'Form siliniyor: ${silinen + hatalar.length + 1} / ${ids.length}',
+        );
+        try {
+          await _kontrol();
+          if (!(await widget.service.projeTalepleri(
+            b,
+            atama,
+          )).any((p) => p['formId'] == id)) {
+            throw StateError('Form atama kapsamından çıkmış.');
+          }
+          final f = await fs.formGetir(fb!, id);
+          if (f['GoogleFormId'] == null) {
+            await fs.formuSil(
+              fb!,
+              id,
+              googleTemizle: (_) async {
+                throw StateError('Google bağlantısı değişti; yeniden deneyin.');
+              },
+            );
+          } else {
+            token ??=
+                await (widget.hesapBagla?.call() ??
+                    OrtakGoogleOturumService.token(
+                      ekIzin: BilgiToplamaGoogleService.silmeScope,
+                    ));
+            await _kontrol();
+            await google.formuSil(fs, fb!, id, token);
+          }
+          await _kontrol();
+          silinen++;
+          formSecimi.remove(id);
+        } catch (e) {
+          hatalar.add('Form #$id: $e');
+        }
+      }
+    } finally {
+      silmeIlerleme = null;
+      await _yukle();
+      if (formSecimi.isEmpty) _formSeciminiKapat();
+    }
+    sonuc =
+        '$silinen form silindi; ${ids.length - silinen} form kaldı.${hatalar.isEmpty ? '' : '\n${hatalar.join('\n')}'}';
+  }
+
   Future<void> _hazirla({String? kurtar}) async {
     await _kontrol();
     final token = await _token();
@@ -993,7 +1140,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
         context: context,
         builder: (c) => AlertDialog(
           title: Text(ad),
-          content: Text(metin),
+          content: SingleChildScrollView(child: Text(metin)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(c, false),
@@ -2124,10 +2271,14 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
           ][ekran]
         : 'Form Talepleri';
     return PopScope(
-      canPop: !yeni && !detay,
+      canPop: !busy && !yeni && !detay && !formSecimModu,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && !busy) {
           setState(() {
+            if (formSecimModu) {
+              _formSeciminiKapat();
+              return;
+            }
             if (yanitSecimModu) {
               _yanitSeciminiKapat();
               return;
@@ -2146,12 +2297,16 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               Text(ad, style: const TextStyle(fontSize: 11)),
             ],
           ),
-          leading: yeni || detay
+          leading: yeni || detay || formSecimModu
               ? IconButton(
                   tooltip: 'Proje taleplerine dön',
                   onPressed: busy
                       ? null
                       : () => setState(() {
+                          if (formSecimModu) {
+                            _formSeciminiKapat();
+                            return;
+                          }
                           if (yanitSecimModu) {
                             _yanitSeciminiKapat();
                             return;
@@ -2229,38 +2384,87 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               if (ekran == 3) _dagitim(),
               if (ekran == 4) _raporlar(),
             ] else ...[
-              for (final p in talepler)
+              if (!formSecimModu && talepler.isNotEmpty)
                 Card(
                   child: ListTile(
-                    leading: const Icon(Icons.assignment_outlined),
-                    title: Text('${p['baslik']}'),
+                    key: const ValueKey('proje-ana-dagitim'),
+                    leading: Icon(
+                      Icons.school_outlined,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    title: const Text('Ders Dağıtımı'),
+                    subtitle: const Text(
+                      'Kontenjan, ön izleme ve dağıtım onayı',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: busy ? null : () => _is(_anaDagitim),
+                  ),
+                ),
+              if (formSecimModu)
+                Row(
+                  children: [
+                    Expanded(
+                      child: CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          'Tümünü seç (${formSecimi.length}/${talepler.length})',
+                        ),
+                        value:
+                            talepler.isNotEmpty &&
+                            formSecimi.length == talepler.length,
+                        onChanged: busy
+                            ? null
+                            : (v) => setState(() {
+                                formSecimi.clear();
+                                if (v == true) {
+                                  formSecimi.addAll(
+                                    talepler.map((p) => p['formId'] as int),
+                                  );
+                                }
+                              }),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Form seçimini kapat',
+                      onPressed: busy
+                          ? null
+                          : () => setState(_formSeciminiKapat),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              for (final p in talepler)
+                Card(
+                  key: ValueKey('proje-form-${p['formId']}'),
+                  child: ListTile(
+                    selected: formSecimi.contains(p['formId']),
+                    leading: formSecimModu
+                        ? Checkbox(
+                            value: formSecimi.contains(p['formId']),
+                            onChanged: busy || salt
+                                ? null
+                                : (_) => _formSec(p['formId'] as int),
+                          )
+                        : const Icon(Icons.assignment_outlined),
+                    title: Text(
+                      '${p['baslik']}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     subtitle: Text(
                       '${(p['ogrenciler'] as List).length} öğrenci • ${widget.atama['SinifKodu']}',
                     ),
-                    trailing: const Icon(Icons.chevron_right),
+                    trailing: formSecimModu
+                        ? null
+                        : const Icon(Icons.chevron_right),
+                    onLongPress: busy || salt
+                        ? null
+                        : () => _formSec(p['formId'] as int),
                     onTap: busy
                         ? null
-                        : () => _is(() async {
-                            proje = p;
-                            ekran = 1;
-                            plan = null;
-                            await _yukle();
-                            kontenjan = (p['kontenjan'] as Map).isNotEmpty;
-                            kapasite
-                              ..clear()
-                              ..addEntries(
-                                projeDersleri.keys.map(
-                                  (id) => MapEntry(
-                                    id,
-                                    (p['kontenjan'] as Map)['$id'] as int? ??
-                                        (p['ogrenciler'] as List).length,
-                                  ),
-                                ),
-                              );
-                            mesaj.text =
-                                p['mesajMetni'] as String? ??
-                                '${_davetMetni(p)}\n\nForm Linki: {FormBaglantisi}';
-                          }),
+                        : () => formSecimModu
+                              ? _formSec(p['formId'] as int)
+                              : _is(() => _formAc(p)),
                   ),
                 ),
               if (talepler.isEmpty)
@@ -2281,8 +2485,18 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               renk: adim == 2 ? const Color(0xff7824ce) : null,
             ),
           ] else if (!detay) ...[
-            _buton('Yenile', Icons.refresh, _yukle, ikincil: true),
-            if (!salt) _buton('Form Talebi Oluştur', Icons.add, _yeni),
+            if (formSecimModu && !salt)
+              _buton(
+                'Seçilenleri Sil (${formSecimi.length})',
+                Icons.delete_outline,
+                _formlariSil,
+                etkin: formSecimi.isNotEmpty,
+                renk: const Color(0xffd92737),
+              )
+            else ...[
+              _buton('Yenile', Icons.refresh, _yukle, ikincil: true),
+              if (!salt) _buton('Form Talebi Oluştur', Icons.add, _yeni),
+            ],
           ] else if (ekran == 0 && !salt) ...[
             _buton(
               form?['Durum'] == 'Taslak'

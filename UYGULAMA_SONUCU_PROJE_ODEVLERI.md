@@ -110,3 +110,19 @@ Doğrulama:
 - Günlükler: `test-artifacts/proje-degerlendirme-test.txt`, `proje-degerlendirme-mesaj-test.txt`, `proje-degerlendirme-mesaj-temel.txt`. Gerçek Google hesabı, telefon veya öğretmenlere mesaj gönderilmedi; APK derlenmedi.
 
 Yerel uygulama ve doğrulamaların ardından kullanıcı bu son kapsam için **YAZ** onayı verdi. Commit/push kapsamı: proje ekranı, proje servisi, ortak mesaj ana/alıcı servisleri, proje test dosyası ve bu rapor. Test günlükleri ve ekran görüntüleri yerelde tutulur; manuel CI veya APK işlemi başlatılmaz.
+
+## Ana sayfadan ders dağıtımı ve proje formu seçerek silme — yerel çalışma
+
+`1d86ce4` sonrasında Form Talepleri ana sayfasına **Ders Dağıtımı** kartı eklendi. Tek form varsa doğrudan o formun mevcut dağıtım ekranı açılır; birden fazla form varsa ilgili form seçilir. Kontenjan, ön izleme, manuel düzenleme ve onay aynı mevcut akışta kalır. Form açılırken kaydedilmiş kontenjanlar yüklenir; önceki formun yanıt/seçim durumu taşınmaz.
+
+Form kartında telefonda veya farenin sol tuşuyla basılı tutma seçim modunu açar. Bu modda dokunma seçimi değiştirir; tümünü seç/kaldır, seçim sayısı, kapatma ve **Seçilenleri Sil** vardır. Geri önce seçimden çıkar. Salt okunur atamalarda seçim/silme açılmaz; işlem sırasında tekrar tetikleme ve geri çıkış engellenir.
+
+Silme açık kullanıcı onayıyla mevcut ortak `formuSil` altyapısını kullanır. Google formu yanıt alımına kapatılır ve bütün uzak yanıtları temizlenir; doğrulamadan yerel form listeden kalkmaz. Taslaklar Google hesabı gerektirmeden mevcut yerel akışla silinir. Yarım Google oluşturma koruması korunur. Çoklu işlemde durdurma, başarı/kalan sayısı ve hatalar gösterilir; başarısız formlar seçili kalır. Öğrenci ana kayıtları ve Belgelerim raporları korunur. Boş Google şablonu, bağlı E-Tablo kopyaları ve eski yedekler bu işlemle silinmez; onayda belirtilir.
+
+Ortak merkezden veya bu sayfadan silinen formlar proje listesinde yeniden görünmez. Eski tercih/dağıtım/sonuç mesajı çağrıları servis düzeyinde silme işaretini denetleyip durur. Tarihsel proje metadatası korunur; yeni tablo, şema veya paket değişikliği yoktur.
+
+Doğrulama: **22 proje testi ve 4 ortak form silme testi başarılı**; değişen dört Dart dosyasında doğrudan analiz temiz, `git diff --check` temiz. Testler sol fareyle uzun basma, iki formda doğru dağıtım hedefi, seçimden geri çıkma, silmeyi iptal, kısmi hata/yeniden deneme, boş liste, öğrenci verilerinin korunması ve silinen kaynağın kullanılamamasını kapsar. 320 px/1,3 yazı ölçeği ve 400 px normal görünüm renderları incelendi; taşma yok. Referanstaki ana sayfa düzeni mevcut tema ile korunup dağıtım giriş kartı ve seçim durumu eklendi. Gerçek cihaz/Google hesabı kullanılmadı; gerçek kayıt silinmedi, APK derlenmedi.
+
+Bu test sırasında Windows bellek içi SQLite yardımcısının `ConflictAlgorithm.ignore` seçeneğini uygulamadığı görüldü. Yardımcı gerçek SQLite `OR IGNORE` davranışına uyarlandı; uygulama veritabanı kodu değiştirilmedi. Kanıtlar: `test-artifacts/proje-ana-liste-test.txt`, `proje-ana-liste-ortak-silme.txt`, `proje/*-ana-proje-listesi.png`, `proje/*-ana-form-secimi.png`.
+
+Değişen tam dosyalar: proje ekranı, proje servisi, proje test dosyası, Windows test SQLite yardımcısı ve bu rapor. Yerel uygulama ve testlerin ardından kullanıcı bu kapsam için **YAZ** onayı verdi. Yalnız bu beş dosya commit/push kapsamındadır; test günlükleri ve ekran görüntüleri yerelde tutulur. Manuel CI veya APK işlemi başlatılmaz.

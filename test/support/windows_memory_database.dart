@@ -304,11 +304,15 @@ class WindowsMemoryDatabase implements Database, Transaction {
     ConflictAlgorithm? conflictAlgorithm,
   }) async {
     _run(
-      'INSERT ${conflictAlgorithm == ConflictAlgorithm.replace ? 'OR REPLACE ' : ''}INTO $table '
+      'INSERT ${conflictAlgorithm == ConflictAlgorithm.replace
+          ? 'OR REPLACE '
+          : conflictAlgorithm == ConflictAlgorithm.ignore
+          ? 'OR IGNORE '
+          : ''}INTO $table '
       '(${values.keys.join(', ')}) VALUES (${List.filled(values.length, '?').join(', ')})',
       values.values.toList(),
     );
-    return _lastId(_handle);
+    return _changes(_handle) == 0 ? 0 : _lastId(_handle);
   }
 
   @override

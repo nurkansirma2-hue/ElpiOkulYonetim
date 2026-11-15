@@ -85,8 +85,18 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
     return db.transaction((tx) async {
       await _atama(tx, b, atama);
       final v = await _projeOku(tx, b, atama);
+      final formlar = await tx.query(
+        'BilgiToplamaForm',
+        columns: ['Id'],
+        where: '''OkulId=? AND OgretmenProfilId=?
+          AND NOT EXISTS (SELECT 1 FROM UygulamaAyarlari a
+            WHERE a.Anahtar='bilgi_toplama_form_silinen:' || BilgiToplamaForm.Id)''',
+        whereArgs: [b.okulId, b.ogretmenProfilId],
+      );
+      final izinli = formlar.map((f) => f['Id']).toSet();
       await _kontrol(tx, b);
       return (v['talepler'] as List)
+          .where((p) => izinli.contains(p['formId']))
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
     });
@@ -134,6 +144,7 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
           ],
         );
         if (f.length != 1) throw StateError('Form kapsamı değişti.');
+        await _projeFormKontrol(tx, b, formId);
         final uygun = await _projeSinifDersleri(tx, b, a);
         if (!kopya.entries.every(
           (e) =>
@@ -206,6 +217,7 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
     return _sirali(
       () => db.transaction((tx) async {
         final a = await _atama(tx, b, atama, yazma: yazma);
+        await _projeFormKontrol(tx, b, formId);
         final v = await _projeOku(tx, b, atama);
         final p = (v['talepler'] as List).where((p) => p['formId'] == formId);
         if (p.length != 1) {
@@ -237,6 +249,24 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
     return values is List && values.length == 1 && values.single is Map
         ? (values.single['value'] ?? '').toString()
         : '';
+  }
+
+  Future<void> _projeFormKontrol(
+    DatabaseExecutor tx,
+    BireyselRehberlikBaglami b,
+    int formId,
+  ) async {
+    final rows = await tx.query(
+      'BilgiToplamaForm',
+      columns: ['Id'],
+      where: '''Id=? AND OkulId=? AND OgretmenProfilId=?
+        AND NOT EXISTS (SELECT 1 FROM UygulamaAyarlari a
+          WHERE a.Anahtar='bilgi_toplama_form_silinen:' || BilgiToplamaForm.Id)''',
+      whereArgs: [formId, b.okulId, b.ogretmenProfilId],
+    );
+    if (rows.length != 1) {
+      throw StateError('Proje formu silinmiş veya kapsamınızdan çıkmış.');
+    }
   }
 
   Future<List<Map<String, dynamic>>> _projeTercihler(
@@ -778,6 +808,7 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
     Map<String, dynamic> p,
     int dersId,
   ) async {
+    await _projeFormKontrol(tx, b, p['formId'] as int);
     final analiz = await _projeAnaliz(tx, b, a, p);
     if (analiz['sonuclandi'] != true) {
       throw StateError('Önce güncel proje ders seçimini sonuçlandırın.');
