@@ -61,6 +61,11 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   );
   final mesaj = TextEditingController();
   final arama = TextEditingController();
+  final dagitimArama = TextEditingController();
+  int dagitimAsamasi = 0;
+  int kapasiteSurumu = 0;
+  bool kriterDegisti = false;
+  Map<String, dynamic>? manuelPlan;
   List<Map<String, dynamic>> talepler = [], tercihler = [];
   List<Map<String, Object?>> dersler = [], ogrenciler = [], ogretmenler = [];
   List<MesajKisi> kisiler = [];
@@ -131,6 +136,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     aciklama.dispose();
     mesaj.dispose();
     arama.dispose();
+    dagitimArama.dispose();
     if (widget.google == null) google.dispose();
     super.dispose();
   }
@@ -194,6 +200,23 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       );
       ogretmenler = await widget.service.projeDersOgretmenleri(b, atama);
       analiz = await widget.service.projeAnalizi(b, atama, formId);
+      final guncelImzalar = {
+        for (final r in tercihler.where((r) => r['onayli'] == true))
+          '${r['OgrenciId']}': r['imza'],
+      };
+      bool eski(Map<String, dynamic>? p) =>
+          p != null &&
+          (p['surum'] != proje!['surum'] ||
+              jsonEncode(p['imzalar']) != jsonEncode(guncelImzalar));
+      if (eski(plan) || eski(manuelPlan)) {
+        plan = null;
+        manuelPlan = null;
+        dagitimAsamasi = 0;
+        sonuc = 'Yanıt veya kayıt değişti. Dağıtımı yeniden hazırlayın.';
+      }
+      for (final id in projeDersleri.keys) {
+        kapasite.putIfAbsent(id, () => (proje!['ogrenciler'] as List).length);
+      }
       onaySecimi.removeWhere(
         (id, imza) => !tercihler.any(
           (r) =>
@@ -207,6 +230,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
 
   Future<void> _yeni() async {
     _formSeciminiKapat();
+    kapasite.clear();
+    _kriterDegisti();
     await _kontrol();
     final ms = MesajlasmaService.instance;
     final mb = await ms.hazirla();
@@ -452,6 +477,10 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     proje = p;
     ekran = islem;
     plan = null;
+    manuelPlan = null;
+    kriterDegisti = false;
+    dagitimAsamasi = 0;
+    kapasiteSurumu++;
     await _yukle();
     if (proje == null) throw StateError('Form artık listede bulunmuyor.');
     final guncel = proje!;
@@ -1132,6 +1161,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     }
     await widget.service.projeDagitiminiKaydet(b, atama, formId, plan!);
     plan = null;
+    kriterDegisti = false;
     await _yukle();
   }
 
@@ -1155,80 +1185,87 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       ) ??
       false;
 
-  Future<void> _manuel() async {
-    if (plan == null) await _dagit();
-    if (!mounted) return;
-    final d = Map<String, dynamic>.from(plan!['dagitim'] as Map);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => StatefulBuilder(
-        builder: (c, set) => AlertDialog(
-          title: const Text('Dağıtımı düzenle'),
-          content: SizedBox(
-            width: 440,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final r in tercihler.where((r) => r['onayli'] == true))
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: DropdownButtonFormField<int>(
-                        initialValue: d['${r['OgrenciId']}'] as int?,
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          labelText:
-                              '${r['OkulNo']} • ${r['Ad']} ${r['Soyad']}',
-                        ),
-                        items: [
-                          const DropdownMenuItem<int>(
-                            value: 0,
-                            child: Text('Yerleştirme yok'),
-                          ),
-                          for (final id in (r['tercihler'] as List).cast<int>())
-                            DropdownMenuItem(
-                              value: id,
-                              child: Text(
-                                projeDersleri[id]!,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                        onChanged: (v) => set(() {
-                          if (v == null || v == 0) {
-                            d.remove('${r['OgrenciId']}');
-                          } else {
-                            d['${r['OgrenciId']}'] = v;
-                          }
-                        }),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: const Text('İptal'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(c, true),
-              child: const Text('Ön izlemeye uygula'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (ok == true) {
-      plan!['dagitim'] = d;
-      plan!['acikta'] = tercihler
-          .where(
-            (r) =>
-                r['OgrenciId'] != null && !d.containsKey('${r['OgrenciId']}'),
-          )
-          .length;
+  Future<bool> _dagitimTercihleriniHazirla() async {
+    await _kontrol();
+    await _yukle();
+    final yeniOnay = {
+      for (final r in tercihler.where(
+        (r) => (r['hatalar'] as List).isEmpty && r['onayli'] != true,
+      ))
+        r['OgrenciId'] as int: r['imza'] as String,
+    };
+    if (yeniOnay.isNotEmpty) {
+      if (!mounted ||
+          !await _onay(
+            'Dağıtım için tercihleri onayla',
+            '${yeniOnay.length} öğrencinin geçerli üç tercihi onaylanacak. Hatalı ve eksik yanıtlar dağıtıma alınmayacak.',
+          )) {
+        return false;
+      }
+      await widget.service.projeTercihleriniOnayla(b, atama, formId, yeniOnay);
+      await _yukle();
+      plan = null;
     }
+    if (!tercihler.any((r) => r['onayli'] == true)) {
+      throw StateError(
+        'Dağıtılacak geçerli tercih yok. Önce yanıtları kontrol edin.',
+      );
+    }
+    return true;
+  }
+
+  Future<void> _otomatikDagit() async {
+    if (!await _dagitimTercihleriniHazirla()) return;
+    await _dagit();
+    dagitimAsamasi = 1;
+  }
+
+  Future<void> _manuel() async {
+    if (!await _dagitimTercihleriniHazirla()) return;
+    final temel = await widget.service.projeDagitimOnizle(
+      b,
+      atama,
+      formId,
+      kontenjan ? kapasite : null,
+    );
+    final aday =
+        plan?['dagitim'] as Map? ??
+        (dagitimGuncel ? proje!['dagitim'] as Map : <String, dynamic>{});
+    final d = <String, dynamic>{};
+    for (final r in tercihler.where((r) => r['onayli'] == true)) {
+      final oid = '${r['OgrenciId']}';
+      final ders = aday[oid];
+      if (!(r['tercihler'] as List).contains(ders)) continue;
+      if (!kontenjan ||
+          d.values.where((v) => v == ders).length < (kapasite[ders] ?? 0)) {
+        d[oid] = ders;
+      }
+    }
+    manuelPlan = {...temel, 'dagitim': d};
+    dagitimAsamasi = 2;
+    dagitimArama.clear();
+  }
+
+  Future<void> _manuelUygula() async {
+    if (manuelPlan == null) return;
+    await _kontrol();
+    plan = jsonDecode(jsonEncode(manuelPlan)) as Map<String, dynamic>;
+    plan!['acikta'] = tercihler
+        .where(
+          (r) =>
+              r['onayli'] == true &&
+              !(plan!['dagitim'] as Map).containsKey('${r['OgrenciId']}'),
+        )
+        .length;
+    manuelPlan = null;
+    dagitimAsamasi = 1;
+  }
+
+  void _kriterDegisti() {
+    plan = null;
+    manuelPlan = null;
+    dagitimAsamasi = 0;
+    kriterDegisti = true;
   }
 
   List<List<String>> _raporSatirlari(int tur) {
@@ -1901,7 +1938,24 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     );
   }
 
-  Widget _degerlendirme() {
+  Widget _degerlendirme() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _dagitim(),
+      if (dagitimAsamasi != 2 &&
+          dagitimGuncel &&
+          !kriterDegisti &&
+          plan == null)
+        ExpansionTile(
+          key: ValueKey('sonuc-bildirimi-${analiz?['sonuclandi']}'),
+          initiallyExpanded: analiz?['sonuclandi'] == true,
+          title: const Text('Sonuçlandırma ve Öğretmen Bildirimi'),
+          children: [_degerlendirmeSonucu()],
+        ),
+    ],
+  );
+
+  Widget _degerlendirmeSonucu() {
     final an = analiz;
     if (an == null) return _bilgi('Analiz için verileri yenileyin.');
     final tamam = an['sonuclandi'] == true;
@@ -2113,89 +2167,349 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     );
   }
 
+  Map get _gorunenDagitim => dagitimAsamasi == 2
+      ? (manuelPlan?['dagitim'] as Map? ?? {})
+      : (plan?['dagitim'] as Map? ??
+            (dagitimGuncel && !kriterDegisti ? proje!['dagitim'] as Map : {}));
+
   Widget _dagitim() {
-    final ds = projeDersleri;
-    final d =
-        plan?['dagitim'] as Map? ??
-        (dagitimGuncel ? proje!['dagitim'] as Map : <String, dynamic>{});
+    final an = analiz;
+    if (an == null) return _bilgi('Analiz için verileri yenileyin.');
+    final d = _gorunenDagitim;
+    final gecerli = an['gecerli'] as int;
+    final sorunlu = an['sorunlu'] as int;
+    final bekleyen = an['bekleyen'] as int;
+    final onayli = tercihler.where((r) => r['onayli'] == true).length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _kart('Ders Kontenjanları', Icons.school_outlined, [
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Kontenjan kullan (isteğe bağlı)'),
-            value: kontenjan,
-            onChanged: salt
-                ? null
-                : (v) => setState(() {
-                    kontenjan = v;
-                    plan = null;
-                  }),
-          ),
-          for (final e in ds.entries)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Expanded(child: Text(e.value)),
-                  if (kontenjan) ...[
-                    IconButton(
-                      tooltip: 'Kontenjanı azalt',
-                      onPressed: salt || kapasite[e.key] == 0
-                          ? null
-                          : () => setState(() {
-                              kapasite[e.key] = kapasite[e.key]! - 1;
-                              plan = null;
-                            }),
-                      icon: const Icon(Icons.remove_circle_outline),
+        _kart(
+          '${widget.atama['SinifKodu']} • ${an['toplam']} öğrenci',
+          Icons.groups_outlined,
+          [
+            if (dagitimAsamasi != 2)
+              _istatistik(
+                dagitimAsamasi == 0
+                    ? [
+                        ('Geçerli', gecerli, Colors.green),
+                        ('Kontrol', sorunlu, Colors.orange),
+                        ('Toplam', an['toplam'] as int, Colors.blue),
+                      ]
+                    : [
+                        ('Yerleşen', d.length, Colors.green),
+                        ('Açıkta', max(0, onayli - d.length), Colors.blue),
+                        ('Kontrol', sorunlu, Colors.orange),
+                      ],
+              ),
+            if (bekleyen > 0) Text('$bekleyen öğrenci için yanıt bekleniyor.'),
+          ],
+        ),
+        if (dagitimAsamasi == 0) ...[
+          _kart('Dağıtım Kriterleri', Icons.settings_outlined, [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Kontenjan kullan'),
+              value: kontenjan,
+              onChanged: salt || busy
+                  ? null
+                  : (v) => setState(() {
+                      kontenjan = v;
+                      _kriterDegisti();
+                    }),
+            ),
+            const Text('Her dersin alabileceği en fazla öğrenci sayısı.'),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Expanded(child: Text('Ders')),
+                Text(kontenjan ? 'Maks. öğrenci' : 'Kontenjan'),
+              ],
+            ),
+            const Divider(),
+            for (final e in projeDersleri.entries)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(e.value)),
+                    if (kontenjan) ...[
+                      IconButton(
+                        tooltip: '${e.value} kontenjanını azalt',
+                        onPressed: salt || busy || (kapasite[e.key] ?? 0) == 0
+                            ? null
+                            : () => setState(() {
+                                kapasite[e.key] = (kapasite[e.key] ?? 0) - 1;
+                                kapasiteSurumu++;
+                                _kriterDegisti();
+                              }),
+                        icon: const Icon(Icons.remove_circle_outline),
+                      ),
+                      SizedBox(
+                        width: 42,
+                        child: TextFormField(
+                          key: ValueKey('kapasite-${e.key}-$kapasiteSurumu'),
+                          initialValue: '${kapasite[e.key] ?? 0}',
+                          enabled: !salt && !busy,
+                          textAlign: TextAlign.center,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(4),
+                          ],
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 8),
+                          ),
+                          onChanged: (v) {
+                            setState(() {
+                              kapasite[e.key] = int.tryParse(v) ?? 0;
+                              _kriterDegisti();
+                            });
+                          },
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '${e.value} kontenjanını artır',
+                        onPressed: salt || busy
+                            ? null
+                            : () => setState(() {
+                                kapasite[e.key] = (kapasite[e.key] ?? 0) + 1;
+                                kapasiteSurumu++;
+                                _kriterDegisti();
+                              }),
+                        icon: const Icon(Icons.add_circle_outline),
+                      ),
+                    ] else
+                      const Text('Sınırsız'),
+                  ],
+                ),
+              ),
+            const Divider(),
+            Text(
+              kontenjan
+                  ? 'Toplam kapasite: ${kapasite.values.fold<int>(0, (a, b) => a + b)}'
+                  : 'Kontenjan sınırı yok.',
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              '• Önce 1., sonra 2. ve 3. tercihler\n• Her öğrenciye 1 proje dersi\n• Eşitlikte okul numarası sırası',
+            ),
+          ]),
+          if (sorunlu > 0 || bekleyen > 0)
+            _bilgi(
+              '$sorunlu hatalı yanıt ve $bekleyen bekleyen öğrenci dağıtıma alınmaz.',
+              uyari: true,
+            ),
+        ] else if (dagitimAsamasi == 2) ...[
+          _kart('Manuel Düzenleme', Icons.edit_outlined, [
+            Wrap(
+              spacing: 6,
+              children: [
+                for (final e in projeDersleri.entries)
+                  Chip(
+                    label: Text(
+                      '${e.value}: ${d.values.where((v) => v == e.key).length}${kontenjan ? '/${kapasite[e.key] ?? 0}' : ''}',
                     ),
-                    Text('${kapasite[e.key] ?? 0}'),
-                    IconButton(
-                      tooltip: 'Kontenjanı artır',
-                      onPressed: salt
-                          ? null
-                          : () => setState(() {
-                              kapasite[e.key] = (kapasite[e.key] ?? 0) + 1;
-                              plan = null;
-                            }),
-                      icon: const Icon(Icons.add_circle_outline),
-                    ),
-                  ] else
-                    const Text('Sınırsız'),
-                ],
+                  ),
+              ],
+            ),
+            TextField(
+              controller: dagitimArama,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'Öğrenci adı veya numarası',
               ),
             ),
-        ]),
-        _kart('Dağıtım Ön İzleme (${d.length} öğrenci)', Icons.groups_outlined, [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final e in ds.entries)
-                Chip(
-                  label: Text(
-                    '${e.value}: ${d.values.where((v) => v == e.key).length}',
-                  ),
+          ]),
+          _bilgi(
+            'Yalnız öğrencinin tercihleri seçilebilir. Kontenjan aşılamaz. Değişiklikler önce ön izlemeye uygulanır.',
+          ),
+          for (final r in tercihler.where(
+            (r) => importNormalize(
+              '${r['OkulNo']} ${r['Ad']} ${r['Soyad']}',
+            ).contains(importNormalize(dagitimArama.text)),
+          ))
+            _manuelOgrenci(r, d),
+        ] else ...[
+          _kart('Ders Dağılımı', Icons.bar_chart, [
+            const Row(
+              children: [
+                Expanded(child: Text('Ders')),
+                Text('Yerleşen / Maks.'),
+              ],
+            ),
+            const Divider(),
+            for (final e in projeDersleri.entries) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(e.value)),
+                    Text(
+                      '${d.values.where((v) => v == e.key).length} / ${kontenjan ? kapasite[e.key] ?? 0 : '∞'}',
+                    ),
+                  ],
                 ),
+              ),
+              LinearProgressIndicator(
+                value: kontenjan
+                    ? ((kapasite[e.key] ?? 0) == 0
+                              ? 0.0
+                              : d.values.where((v) => v == e.key).length /
+                                    kapasite[e.key]!)
+                          .clamp(0.0, 1.0)
+                          .toDouble()
+                    : (d.isEmpty
+                          ? 0.0
+                          : d.values.where((v) => v == e.key).length /
+                                d.length),
+                minHeight: 5,
+              ),
             ],
-          ),
-          Text(
-            'Yerleşmeyen: ${plan?['acikta'] ?? (proje!['ogrenciler'] as List).length - d.length}',
-          ),
-          Text(
-            dagitimGuncel && plan == null
-                ? 'Kesin dağıtım kaydedildi.'
-                : 'Bu dağıtım henüz kesinleştirilmedi.',
-          ),
-        ]),
-        _bilgi(
-          'Önce 1., sonra 2. ve 3. tercihler değerlendirilir. Eşit öncelikte okul numarası sırası kullanılır. Öğrenci tercih etmediği derse otomatik atanmaz.',
-        ),
+            const SizedBox(height: 12),
+            Text(
+              '${d.length} öğrenci yerleştirildi. $sorunlu yanıt kontrol bekliyor.',
+            ),
+            Text(
+              plan != null
+                  ? 'Ön izleme • Henüz kaydedilmedi.'
+                  : dagitimGuncel && !kriterDegisti
+                  ? 'Kesin dağıtım kaydedildi.'
+                  : 'Dağıtımı yeniden hazırlayın.',
+            ),
+          ]),
+          _kart('Öğrenci Sonuçları', Icons.groups_outlined, [
+            for (final r in tercihler)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  d.containsKey('${r['OgrenciId']}')
+                      ? Icons.check_circle_outline
+                      : Icons.pending_outlined,
+                ),
+                title: Text('${r['OkulNo']} • ${r['Ad']} ${r['Soyad']}'),
+                subtitle: Text(
+                  d.containsKey('${r['OgrenciId']}')
+                      ? '${(r['tercihler'] as List).indexOf(d['${r['OgrenciId']}']) + 1}. tercihine yerleşti • ${projeDersleri[d['${r['OgrenciId']}']]}'
+                      : (r['hatalar'] as List).isNotEmpty
+                      ? (r['hatalar'] as List).join(' ')
+                      : 'Yerleşmedi',
+                ),
+                onTap: busy || salt || r['yanitId'] == null
+                    ? null
+                    : () => _is(() => _tercihDuzenle(r)),
+              ),
+          ]),
+          if (analiz?['sonuclanabilir'] != true)
+            _bilgi(
+              'Kesin sonuç için eksik yanıtları tamamlayın ve bütün öğrencileri yerleştirin.',
+            ),
+        ],
       ],
     );
   }
 
+  Widget _manuelOgrenci(Map<String, dynamic> r, Map d) {
+    final oid = '${r['OgrenciId']}';
+    final seciliDers = d[oid] as int?;
+    final ids = (r['tercihler'] as List).cast<int>();
+    bool dolu(int id) =>
+        kontenjan &&
+        seciliDers != id &&
+        d.values.where((v) => v == id).length >= (kapasite[id] ?? 0);
+    return _kart(
+      '${r['OkulNo']} • ${r['Ad']} ${r['Soyad']}',
+      Icons.person_outline,
+      [
+        Text(
+          'Tercihler: ${ids.indexed.map((e) => '${e.$1 + 1}. ${projeDersleri[e.$2]}').join(' • ')}',
+        ),
+        const SizedBox(height: 8),
+        if (r['onayli'] == true)
+          DropdownButtonFormField<int>(
+            key: ValueKey('manuel-$oid-$seciliDers'),
+            initialValue: seciliDers ?? 0,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Atanacak ders'),
+            selectedItemBuilder: (c) => [
+              const Text('Yerleştirme yok'),
+              for (final id in ids)
+                Text(projeDersleri[id]!, overflow: TextOverflow.ellipsis),
+            ],
+            items: [
+              const DropdownMenuItem(value: 0, child: Text('Yerleştirme yok')),
+              for (final id in ids)
+                DropdownMenuItem(
+                  value: id,
+                  enabled: !dolu(id),
+                  child: Text(
+                    '${projeDersleri[id]}${dolu(id)
+                        ? ' — Dolu'
+                        : seciliDers == id
+                        ? ' — Mevcut ders'
+                        : kontenjan
+                        ? ' — ${(kapasite[id] ?? 0) - d.values.where((v) => v == id).length} boş yer'
+                        : ''}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            onChanged: busy || salt
+                ? null
+                : (id) => setState(() {
+                    if (id == null || id == 0) {
+                      d.remove(oid);
+                    } else if (ids.contains(id) && !dolu(id)) {
+                      d[oid] = id;
+                    }
+                  }),
+          )
+        else ...[
+          Text(
+            (r['hatalar'] as List).join(' '),
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+          if (r['yanitId'] != null && !salt)
+            _buton(
+              'Yanıtı Düzenle',
+              Icons.edit_outlined,
+              () => _tercihDuzenle(r),
+              ikincil: true,
+            ),
+        ],
+      ],
+    );
+  }
+
+  List<Widget> _dagitimButonlari() => dagitimAsamasi == 2
+      ? [
+          _buton('Vazgeç', Icons.close, () async {
+            manuelPlan = null;
+            dagitimAsamasi = plan != null || dagitimGuncel && !kriterDegisti
+                ? 1
+                : 0;
+          }, ikincil: true),
+          _buton('Ön İzlemeye Uygula', Icons.check, _manuelUygula),
+        ]
+      : dagitimAsamasi == 0
+      ? [
+          _buton('Manuel Dağıt', Icons.edit_outlined, _manuel, ikincil: true),
+          _buton('Otomatik Dağıt', Icons.play_arrow, _otomatikDagit),
+        ]
+      : [
+          _buton('Kriterler', Icons.settings_outlined, () async {
+            dagitimAsamasi = 0;
+          }, ikincil: true),
+          _buton('Manuel Düzenle', Icons.edit_outlined, _manuel, ikincil: true),
+          _buton(
+            'Dağıtımı Onayla',
+            Icons.check,
+            _dagitimKaydet,
+            etkin: plan != null && (_gorunenDagitim).isNotEmpty,
+            renk: const Color(0xff008a24),
+          ),
+        ];
   Widget _raporlar() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
@@ -2255,7 +2569,9 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   @override
   Widget build(BuildContext context) {
     final detay = proje != null && !yeni;
-    final ad = yeni
+    final ad = !yeni && detay && (ekran == 3 || ekran == 1 && sekme == 2)
+        ? 'Değerlendirme'
+        : yeni
         ? [
             'Form Talebi Oluştur',
             'Öğrenci ve Ders Seçenekleri',
@@ -2510,18 +2826,22 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             ),
           ] else if (ekran == 1 && !salt) ...[
             if (sekme == 2) ...[
-              _buton('Analizi Yenile', Icons.refresh, _yukle, ikincil: true),
-              _buton(
-                analiz?['sonuclandi'] == true
-                    ? 'Sonuçlandırıldı'
-                    : 'Proje Seçimini Sonuçlandır',
-                Icons.check_circle_outline,
-                _sonuclandir,
-                etkin:
-                    analiz?['sonuclanabilir'] == true &&
-                    analiz?['sonuclandi'] != true,
-                renk: const Color(0xff008a24),
-              ),
+              ..._dagitimButonlari(),
+              if (dagitimAsamasi != 2 &&
+                  dagitimGuncel &&
+                  !kriterDegisti &&
+                  plan == null)
+                _buton(
+                  analiz?['sonuclandi'] == true
+                      ? 'Sonuçlandırıldı'
+                      : 'Proje Seçimini Sonuçlandır',
+                  Icons.check_circle_outline,
+                  _sonuclandir,
+                  etkin:
+                      analiz?['sonuclanabilir'] == true &&
+                      analiz?['sonuclandi'] != true,
+                  renk: const Color(0xff008a24),
+                ),
             ] else if (yanitSecimModu) ...[
               _buton(
                 'Toplu Onayla (${yanitSecimi.length})',
@@ -2570,19 +2890,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               renk: const Color(0xff008a24),
             ),
           ] else if (ekran == 3 && !salt) ...[
-            _buton('Dağıtımı Yenile', Icons.refresh, _dagit, ikincil: true),
-            _buton(
-              'Manuel Düzenle',
-              Icons.edit_outlined,
-              _manuel,
-              ikincil: true,
-            ),
-            _buton(
-              'Dağıtımı Onayla',
-              Icons.check,
-              _dagitimKaydet,
-              renk: const Color(0xff008a24),
-            ),
+            ..._dagitimButonlari(),
           ] else if (ekran == 4) ...[
             _buton(
               'Excel',

@@ -126,3 +126,21 @@ Doğrulama: **22 proje testi ve 4 ortak form silme testi başarılı**; değişe
 Bu test sırasında Windows bellek içi SQLite yardımcısının `ConflictAlgorithm.ignore` seçeneğini uygulamadığı görüldü. Yardımcı gerçek SQLite `OR IGNORE` davranışına uyarlandı; uygulama veritabanı kodu değiştirilmedi. Kanıtlar: `test-artifacts/proje-ana-liste-test.txt`, `proje-ana-liste-ortak-silme.txt`, `proje/*-ana-proje-listesi.png`, `proje/*-ana-form-secimi.png`.
 
 Değişen tam dosyalar: proje ekranı, proje servisi, proje test dosyası, Windows test SQLite yardımcısı ve bu rapor. Yerel uygulama ve testlerin ardından kullanıcı bu kapsam için **YAZ** onayı verdi. Yalnız bu beş dosya commit/push kapsamındadır; test günlükleri ve ekran görüntüleri yerelde tutulur. Manuel CI veya APK işlemi başlatılmaz.
+
+## Onaylı değerlendirme tasarımı — yerel UYGULA
+
+`bbb7e8a` sonrasında kullanıcının onayladığı üç görünüm Değerlendirme sekmesine bağlandı: **Dağıtım Kriterleri → Otomatik Dağıtım Ön İzlemesi → Manuel Düzenleme**. Ana sayfadaki Ders Dağıtımı kartı da aynı bileşenleri kullanır. İkinci bir dağıtım motoru oluşturulmadı.
+
+Kriterlerde gerçek geçerli/kontrol/toplam ve bekleyen sayıları, isteğe bağlı kontenjan, ders başına düzenlenebilir azami öğrenci sayısı, azalt/artır işlemleri ve toplam kapasite bulunur. Otomatik dağıtım mevcut tercih turları/okul numarası kuralını korur. Henüz onaylanmamış geçerli tercihler varsa önce açık onay alınır; hatalı veya eksik yanıtlar dağıtılmaz. Her öğrenci tek derse yerleştirilir.
+
+Ön izlemede yerleşen/açıkta/kontrol sayıları, ders başına yerleşen/azami değerleri ve kapasite çubukları, öğrencinin yerleştiği tercih sırası ve henüz kaydedilmemiş durum gösterilir. Açıkta sayısı onaylı fakat yerleşmeyenleri sayar; yanıt bekleyen ve hatalı kayıtlar ayrıca bildirilir. Kesin kayıt **Dağıtımı Onayla** ile yapılır. Eksik öğrenciler varken proje seçimini sonuçlandırma açılmaz.
+
+Manuel düzenleme sayfa içinde arama, ders dolulukları ve öğrenci kartları kullanır. Yalnız öğrencinin onaylı üç tercihi açılır; dolu ders seçilemez, mevcut ders doluyken korunabilir. Yerleştirmeyi kaldırmak boş yer açar ve diğer öğrencilerin seçenekleri güncellenir. **Vazgeç** taslak değişiklikleri atar; **Ön İzlemeye Uygula** veritabanına yazmadan ön izlemeyi değiştirir. Kayıtta mevcut servis kontenjan/tercih/sürüm denetimini tekrar yapar. Yanıt veya kayıt sürümü değişirse eski ön izleme ve manuel taslak bırakılır. Kriter değişikliği eski sonucu yeni kriterin sonucu gibi göstermez.
+
+Mevcut sonuçlandırma, ders öğretmeni eşleştirme ve ortak mesaj onayı Değerlendirmede **Sonuçlandırma ve Öğretmen Bildirimi** altında korunur; sonuçlandırıldığında bölüm açık gelir. Formların basılı tutarak seçimi/silinmesi ve diğer sekmeler korunur. Şema, servis dağıtım algoritması, paketler ve öğrenci ana kayıtları değiştirilmedi.
+
+Doğrulama: proje dosyasında **22 test başarılı**; ekran ve test dosyasının doğrudan Dart analizi temiz. Ekran testi azami değerlerin girilmesini, otomatik dağıtımı, dolu seçeneklerin kapatılmasını, boş yer açıp başka öğrenciye atamayı, vazgeçince eski planın korunmasını, manuel ön izlemenin uygulanmasını ve kontenjanların kayıtla kalıcılığını doğrular. Önceki sonuçlandırma/mesaj, form silme ve dağıtım koruma testleri de aynı dosyada çalışır. Gerçek kullanıcı veritabanı ve telefon/Google hesabı kullanılmadı; APK derlenmedi.
+
+Görsel karşılaştırma: gerçek Flutter kriter/ön izleme/manuel renderları 400 px normal ve değerlendirme/manuel görünümleri 320 px büyük yazıda kontrol edilir. Referanstaki bölüm sırası, doluluk bilgisi ve sabit alt eylemler uygulanır. Mevcut ortak tema, AppBar ve işlem menüsü korunur; uzun dersler ve büyük yazıda içerik kayar, alt eylemler sarılır. Örnek 30/28 sayıları sabitlenmez. Piksel birebirlik iddiası yoktur. Kanıtlar: `test-artifacts/proje-yeni-degerlendirme-test.txt`, `test-artifacts/proje/*yeni-degerlendirme*.png` ve `*-5-degerlendirme.png`.
+
+Tam kaynaklar: `lib/screens/rehberlik_proje_odev_screen.dart`, `test/rehberlik_proje_odev_test.dart` ve bu rapor. Yerel uygulama ve doğrulamaların ardından kullanıcı bu kapsam için **YAZ** onayı verdi. Yalnız bu üç dosya commit/push kapsamındadır; test günlükleri ve ekran görüntüleri yerelde tutulur. Manuel CI veya APK işlemi başlatılmaz.

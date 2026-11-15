@@ -1064,8 +1064,73 @@ void main() {
     await bekle();
     await tester.tap(find.text('Değerlendirme'));
     await bekle();
-    expect(find.text('Proje Ders Seçimi Analizi'), findsOneWidget);
+    expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
     await capture('400-5-degerlendirme-hazir');
+    await tester.tap(find.text('Kontenjan kullan'));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 3; i++) {
+      final alan = find.byType(TextFormField).at(i);
+      await tester.ensureVisible(alan);
+      await tester.enterText(alan, '1');
+      await tester.pump();
+    }
+    expect(find.text('Toplam kapasite: 3'), findsOneWidget);
+    await tester.drag(find.byType(ListView).first, const Offset(0, 1200));
+    await tester.pumpAndSettle();
+    await capture('400-yeni-degerlendirme-kriterler');
+    await tester.tap(find.text('Otomatik Dağıt'));
+    await bekle();
+    expect(find.text('Ders Dağılımı'), findsOneWidget);
+    expect(
+      find.text('3 öğrenci yerleştirildi. 0 yanıt kontrol bekliyor.'),
+      findsOneWidget,
+    );
+    await capture('400-yeni-degerlendirme-otomatik');
+    await tester.tap(find.text('Manuel Düzenle'));
+    await bekle();
+    expect(find.text('Manuel Düzenleme'), findsOneWidget);
+    final ilkSecim = find.byKey(const ValueKey('manuel-1-1'));
+    await tester.ensureVisible(ilkSecim);
+    await tester.pumpAndSettle();
+    final alan = tester.widget<DropdownButtonFormField<int>>(ilkSecim);
+    // Dolu seçenekler kullanıcı arayüzünde de seçilemez.
+    final dropdown = tester.widget<DropdownButton<int>>(
+      find.descendant(of: ilkSecim, matching: find.byType(DropdownButton<int>)),
+    );
+    expect(alan.initialValue, 1);
+    expect(dropdown.items!.where((e) => e.value == 2).single.enabled, false);
+    expect(dropdown.items!.where((e) => e.value == 3).single.enabled, false);
+    await capture('400-yeni-degerlendirme-manuel');
+    final ikinciSecim = find.byKey(const ValueKey('manuel-2-2'));
+    await tester.ensureVisible(ikinciSecim);
+    await tester.tap(ikinciSecim);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Yerleştirme yok').last);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.ensureVisible(ilkSecim);
+    await tester.tap(ilkSecim);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Fizik — 1 boş yer').last);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('manuel-1-2')), findsOneWidget);
+    await tester.tap(find.text('Vazgeç'));
+    await bekle();
+    await tester.tap(find.text('Manuel Düzenle'));
+    await bekle();
+    expect(find.byKey(const ValueKey('manuel-1-1')), findsOneWidget);
+    await tester.tap(find.text('Ön İzlemeye Uygula'));
+    await bekle();
+    await tester.tap(find.text('Dağıtımı Onayla'));
+    await bekle();
+    await tester.tap(find.text('Onayla').last);
+    await tester.pump(const Duration(milliseconds: 300));
+    await bekle();
+    final kayit = (await s.projeTalepleri(
+      b,
+      1,
+    )).singleWhere((p) => p['formId'] == fid);
+    expect(kayit['kontenjan'], {'1': 1, '2': 1, '3': 1});
+    expect(kayit['dagitim'], {'1': 1, '2': 2, '3': 3});
     await tester.tap(find.text('Proje Seçimini Sonuçlandır'));
     await bekle();
     await tester.tap(find.text('Onayla').last);
@@ -1193,7 +1258,7 @@ void main() {
       expect(find.text('Dağıtılacak proje formunu seçin'), findsOneWidget);
       await tester.tap(find.text('Proje • 3 öğrenci'));
       await bekle();
-      expect(find.text('Ders Kontenjanları'), findsOneWidget);
+      expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
       await tester.tap(find.byTooltip('Proje taleplerine dön'));
       await bekle();
       final form = find.byKey(ValueKey('proje-form-$fid'));
@@ -1205,7 +1270,7 @@ void main() {
       await gesture.up();
       await bekle();
       expect(find.text('Seçilenleri Sil (1)'), findsOneWidget);
-      expect(find.text('Ders Kontenjanları'), findsNothing);
+      expect(find.text('Dağıtım Kriterleri'), findsNothing);
       await capture('${width.toInt()}-ana-form-secimi');
       await tester.tap(find.text('Tümünü seç (1/2)'));
       await bekle();
@@ -1382,9 +1447,16 @@ void main() {
       await bekle();
       await tester.tap(find.text('Değerlendirme'));
       await bekle();
-      expect(find.text('Proje Ders Seçimi Analizi'), findsOneWidget);
+      expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
       await capture('${width.toInt()}-5-degerlendirme');
       expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Manuel Dağıt'));
+      await bekle();
+      expect(find.text('Manuel Düzenleme'), findsOneWidget);
+      await capture('${width.toInt()}-yeni-degerlendirme-manuel');
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Vazgeç'));
+      await bekle();
       await tester.tap(find.text('Özet'));
       await bekle();
       for (final (i, ad) in [
