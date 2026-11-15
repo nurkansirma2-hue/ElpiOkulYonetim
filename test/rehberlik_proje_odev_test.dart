@@ -19,6 +19,50 @@ import 'package:elpi_okul_yonetim/services/bireysel_bakim_service.dart';
 import 'package:elpi_okul_yonetim/screens/rehberlik_proje_odev_screen.dart';
 import 'support/windows_memory_database.dart';
 
+class _ProjeYanitTestGoogle extends BilgiToplamaGoogleService {
+  final silinen = <String>[];
+  final hatali = <String>{};
+  @override
+  Future<List<int>> yanitlariAl(
+    BireyselBilgiToplamaService yerel,
+    BilgiToplamaOturumu b,
+    int id,
+    String token,
+  ) async => [];
+  @override
+  Future<BilgiToplamaTopluSilmeSonucu> yanitlariTopluSil(
+    BireyselBilgiToplamaService yerel,
+    BilgiToplamaOturumu b,
+    BilgiToplamaSilmePlani plan,
+    String token, {
+    bool Function()? devamEt,
+    void Function(int, int)? ilerleme,
+  }) async {
+    var n = 0;
+    final hatalar = <String>[];
+    for (final id in plan.googleYanitIdleri) {
+      if (devamEt != null && !devamEt()) break;
+      try {
+        await yerel.topluSilmeYanitiSil(
+          b,
+          plan,
+          id,
+          googleSil: (fid, rid) async {
+            if (hatali.contains(rid)) {
+              throw StateError('Deneme bağlantı hatası');
+            }
+            silinen.add(rid);
+          },
+        );
+        n++;
+      } catch (e) {
+        hatalar.add('$e');
+      }
+    }
+    return BilgiToplamaTopluSilmeSonucu(n, plan.toplam - n, hatalar);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Database db;
@@ -587,6 +631,126 @@ void main() {
     expect(await db.query('BilgiToplamaYanit'), hasLength(2));
     expect((await s.projeTalepleri(b, 1)).single['onaylar'], isNotEmpty);
   });
+  Future<void> yanitIslemleriniDogrula(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(400, 850);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.runAsync(() async {
+      await yanit(1, [1, 2, 3]);
+      await yanit(2, [1, 1, 3]);
+    });
+    final g = _ProjeYanitTestGoogle();
+    Future<void> bekle() async {
+      for (var i = 0; i < 80; i++) {
+        await tester.runAsync(() async {
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+        });
+        await tester.pump();
+        if (find.byType(AlertDialog).evaluate().isNotEmpty) {
+          await tester.pump(const Duration(milliseconds: 300));
+          return;
+        }
+        if (find.byType(LinearProgressIndicator).evaluate().isEmpty) break;
+      }
+      await tester.pumpAndSettle();
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RehberlikProjeOdevScreen(
+          service: s,
+          baglam: b,
+          formService: fs,
+          google: g,
+          hesapBagla: () async => 'test',
+          atama: const {
+            'RehberlikAtamaId': 1,
+            'SinifSubeId': 1,
+            'SinifKodu': '9/C',
+            'EgitimOgretimYili': '2026/2027',
+          },
+        ),
+      ),
+    );
+    await bekle();
+    await tester.tap(find.text('Proje'));
+    await bekle();
+    await tester.tap(find.text('Yanıtlar'));
+    await bekle();
+    expect(find.text('Ortak form ayrıntısı / yanıt düzenleme'), findsNothing);
+    expect(find.byType(Checkbox), findsNothing);
+    final ilk = find.textContaining('101 • Öğrenci1');
+    await tester.tap(ilk);
+    await bekle();
+    expect(find.text('101 • Tercih düzenle'), findsOneWidget);
+    await tester.tap(find.text('İptal'));
+    await bekle();
+    await tester.tap(ilk);
+    await bekle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>).at(0));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Fizik').last);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byType(DropdownButtonFormField<String>).at(1));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Matematik').last);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Düzeltmeyi kaydet'));
+    await bekle();
+    expect(await fs.yanitlar(fb, fid), hasLength(2));
+    expect(await db.query('BilgiToplamaYanit'), hasLength(3));
+    await tester.longPress(ilk);
+    await bekle();
+    expect(find.text('Toplu Onayla (1)'), findsOneWidget);
+    await tester.tap(find.text('Toplu Onayla (1)'));
+    await bekle();
+    await tester.tap(find.text('Onayla').last);
+    await bekle();
+    expect(find.text('Onaylı'), findsOneWidget);
+    await tester.longPress(ilk);
+    await bekle();
+    await tester.tap(find.text('Tümünü seç (1/2)'));
+    await bekle();
+    await tester.tap(find.text('Toplu Onayla (2)'));
+    await bekle();
+    expect(
+      find.textContaining('1 sorunlu yanıt onaylanmayacak'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Onayla').last);
+    await bekle();
+    await tester.longPress(ilk);
+    await bekle();
+    await tester.tap(find.text('Tümünü seç (1/2)'));
+    await bekle();
+    expect(find.text('Toplu Sil (2)'), findsOneWidget);
+    await tester.tap(find.text('Toplu Sil (2)'));
+    await bekle();
+    expect(find.text('Seçili yanıtları sil'), findsOneWidget);
+    await tester.tap(find.text('İptal'));
+    await bekle();
+    expect(g.silinen, isEmpty);
+    expect(await fs.yanitlar(fb, fid), hasLength(2));
+    g.hatali.add('r2');
+    await tester.tap(find.text('Toplu Sil (2)'));
+    await bekle();
+    await tester.tap(find.text('Onayla').last);
+    await bekle();
+    expect(g.silinen, ['r1']);
+    expect(await fs.yanitlar(fb, fid), hasLength(1));
+    expect(
+      find.textContaining('1 yanıt silindi; 1 yanıt kaldı.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('101 • Öğrenci1'), findsNothing);
+    expect(find.textContaining('102 • Öğrenci2'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    g.dispose();
+  }
+
   testWidgets('320 ve büyük yazıda proje listesi, kontrol ve dağıtım taşmaz', (
     tester,
   ) async {
@@ -692,6 +856,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await capture('${width.toInt()}-5-yanitlar');
+      await tester.tap(find.text('Yanıtlar'));
+      await bekle();
+      expect(find.text('Ortak form ayrıntısı / yanıt düzenleme'), findsNothing);
+      await capture('${width.toInt()}-5-yanit-listesi');
+      await tester.longPress(find.textContaining('101 • Öğrenci1'));
+      await bekle();
+      expect(find.text('Toplu Sil (1)'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await capture('${width.toInt()}-5-yanit-secimi');
+      await tester.tap(find.byTooltip('Seçimi kapat'));
+      await bekle();
+      await tester.tap(find.text('Özet'));
+      await bekle();
       for (final (i, ad) in [
         (0, 'Form Daveti'),
         (2, 'Tercih Kontrolü'),
@@ -752,6 +929,7 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
     }
+    await yanitIslemleriniDogrula(tester);
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
     await tester.runAsync(() => temp!.delete(recursive: true));

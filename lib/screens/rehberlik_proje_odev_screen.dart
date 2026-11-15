@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -66,6 +67,11 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   final secili = <String, MesajKisi>{};
   final dersSecimi = <int, String>{};
   final onaySecimi = <int, String>{};
+  final yanitSecimi = <int, String>{};
+  bool yanitSecimModu = false;
+  String? silmeIlerleme;
+  bool silmeDurdur = false;
+  List<Map<String, Object?>> hamYanitlar = [];
   final kapasite = <int, int>{};
   Map<String, dynamic>? proje, plan;
   Map<String, Object?>? form;
@@ -170,6 +176,11 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       form = await fs.formGetir(fb!, formId);
       link = proje!['formLinki'] as String?;
       tercihler = await widget.service.projeTercihleri(b, atama, formId);
+      hamYanitlar = await fs.yanitlar(fb!, formId);
+      yanitSecimi.removeWhere(
+        (id, surum) =>
+            !hamYanitlar.any((y) => y['Id'] == id && y['KaynakSurum'] == surum),
+      );
       ogretmenler = await widget.service.projeDersOgretmenleri(b, atama);
       onaySecimi.removeWhere(
         (id, imza) => !tercihler.any(
@@ -551,6 +562,169 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     await _yukle();
   }
 
+  List<Map<String, dynamic>> get yanitSatirlari => hamYanitlar.map((y) {
+    final eslesen = tercihler.where((r) => r['yanitId'] == y['Id']);
+    if (eslesen.isNotEmpty) {
+      return {...eslesen.first, 'kaynakSurum': y['KaynakSurum']};
+    }
+    final raw = jsonDecode(y['HamYanit'] as String) as Map;
+    final qs = jsonDecode(y['SoruAnlikGoruntusu'] as String) as List;
+    final ids = <int>[];
+    for (var i = 1; i <= 3; i++) {
+      final q = qs
+          .where((q) => q['AlanAnahtari'] == 'projeTercih$i')
+          .firstOrNull;
+      if (q == null) continue;
+      final duz = raw['_yerelDuzeltme'];
+      final answers = raw['answers'] as Map?;
+      String? value;
+      if (duz is Map && duz['cevaplar'] is Map) {
+        value = duz['cevaplar']['projeTercih$i']?.toString();
+      } else {
+        final answer = answers?[q['GoogleSoruId']];
+        if (answer is Map && answer['textAnswers'] is Map) {
+          final values = answer['textAnswers']['answers'];
+          if (values is List && values.length == 1 && values.single is Map) {
+            value = values.single['value']?.toString();
+          }
+        }
+      }
+      final d = projeDersleri.entries.where((d) => d.value == value);
+      if (d.length == 1) ids.add(d.single.key);
+    }
+    return <String, dynamic>{
+      'yanitId': y['Id'],
+      'kaynakSurum': y['KaynakSurum'],
+      'OkulNo': y['GirilenOkulNo'],
+      'Ad': y['GirilenAdSoyad'],
+      'Soyad': '',
+      'tercihler': ids,
+      'hatalar': [
+        'Öğrenci eşleşmesi veya birden fazla yanıt için kontrol gerekli.',
+      ],
+      'onayli': false,
+      'OgrenciId': null,
+    };
+  }).toList();
+
+  void _yanitSec(Map<String, dynamic> r) => setState(() {
+    yanitSecimModu = true;
+    final id = r['yanitId'] as int;
+    if (yanitSecimi.containsKey(id)) {
+      yanitSecimi.remove(id);
+    } else {
+      yanitSecimi[id] = r['kaynakSurum'] as String;
+    }
+  });
+  void _yanitSeciminiKapat() {
+    yanitSecimi.clear();
+    yanitSecimModu = false;
+  }
+
+  void _secilenYanitlariDogrula() {
+    if (yanitSecimi.isEmpty) {
+      throw StateError('Önce yanıta basılı tutarak seçim yapın.');
+    }
+    if (!yanitSecimi.entries.every(
+      (e) => hamYanitlar.any(
+        (y) => y['Id'] == e.key && y['KaynakSurum'] == e.value,
+      ),
+    )) {
+      throw StateError('Seçilen yanıtlar değişti. Yenileyip yeniden seçin.');
+    }
+  }
+
+  Future<void> _yanitlariOnayla() async {
+    await _kontrol();
+    _secilenYanitlariDogrula();
+    final secim = {
+      for (final r in tercihler.where(
+        (r) =>
+            yanitSecimi.containsKey(r['yanitId']) &&
+            (r['hatalar'] as List).isEmpty,
+      ))
+        r['OgrenciId'] as int: r['imza'] as String,
+    };
+    if (secim.isEmpty) {
+      throw StateError(
+        'Seçili yanıtlar içinde onaylanabilecek geçerli tercih yok. Hatalı yanıtları düzenleyin.',
+      );
+    }
+    final atlanan = yanitSecimi.length - secim.length;
+    if (!await _onay(
+      'Seçili yanıtları onayla',
+      '${secim.length} öğrencinin üç ders tercihi onaylanacak.${atlanan == 0 ? '' : ' $atlanan sorunlu yanıt onaylanmayacak.'}',
+    )) {
+      return;
+    }
+    await widget.service.projeTercihleriniOnayla(b, atama, formId, secim);
+    _yanitSeciminiKapat();
+    plan = null;
+    await _yukle();
+    sonuc =
+        '${secim.length} tercih onaylandı.${atlanan == 0 ? '' : ' $atlanan sorunlu yanıt korunuyor.'}';
+  }
+
+  Future<void> _yanitlariSil() async {
+    await _kontrol();
+    _secilenYanitlariDogrula();
+    final secilen = Map<int, String>.of(yanitSecimi);
+    final token = await _token();
+    await google.yanitlariAl(fs, fb!, formId, token);
+    final guncel = await fs.yanitlar(fb!, formId);
+    if (!secilen.entries.every(
+      (e) => guncel.any((y) => y['Id'] == e.key && y['KaynakSurum'] == e.value),
+    )) {
+      throw StateError('Seçili yanıtlar değişti. Yenileyip yeniden seçin.');
+    }
+    final silme = await fs.topluSilmePlani(
+      fb!,
+      formId,
+      sadeceKaydedilenler: false,
+      seciliYanitIdleri: secilen.keys.toSet(),
+    );
+    if (silme.toplam == 0) {
+      throw StateError('Seçili yanıtlar artık silinebilir değil. Yenileyin.');
+    }
+    if (!mounted) return;
+    if (!await _onay(
+      'Seçili yanıtları sil',
+      '${silme.toplam} yanıt Google Forms’dan ve uygulamadaki ham cevaplardan kalıcı olarak silinecek. '
+          'Bu yanıtların tercih onayları ve dağıtım sonuçları yeniden kontrol gerektirecek. '
+          'Öğrenci ana kayıtları korunur. Google E-Tablo kopyaları ve eski yedekler silinmez.',
+    )) {
+      return;
+    }
+    await _kontrol();
+    silmeDurdur = false;
+    if (mounted) {
+      setState(() => silmeIlerleme = 'Siliniyor: 0 / ${silme.toplam}');
+    }
+    late BilgiToplamaTopluSilmeSonucu silinen;
+    try {
+      silinen = await google.yanitlariTopluSil(
+        fs,
+        fb!,
+        silme,
+        token,
+        devamEt: () => mounted && !silmeDurdur,
+        ilerleme: (n, toplam) {
+          if (mounted) {
+            setState(() => silmeIlerleme = 'Siliniyor: $n / $toplam');
+          }
+        },
+      );
+    } finally {
+      silmeIlerleme = null;
+    }
+    await _kontrol();
+    await _yukle();
+    plan = null;
+    if (silinen.kalan == 0) _yanitSeciminiKapat();
+    sonuc =
+        '${silinen.basarili} yanıt silindi; ${silinen.kalan} yanıt kaldı.${silinen.hatalar.isEmpty ? '' : '\n${silinen.hatalar.join('\n')}'}';
+  }
+
   Future<void> _tercihDuzenle(Map<String, dynamic> row) async {
     await _kontrol();
     if (row['yanitId'] == null) {
@@ -916,6 +1090,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     Future<void> Function() f, {
     bool ikincil = false,
     Color? renk,
+    bool etkin = true,
   }) => ikincil
       ? OutlinedButton.icon(
           style: renk == null
@@ -925,7 +1100,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   backgroundColor: renk.withValues(alpha: .08),
                   side: BorderSide(color: renk.withValues(alpha: .4)),
                 ),
-          onPressed: busy ? null : () => _is(f),
+          onPressed: busy || !etkin ? null : () => _is(f),
           icon: Icon(ikon),
           label: Text(ad),
         )
@@ -936,7 +1111,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   backgroundColor: renk,
                   foregroundColor: Colors.white,
                 ),
-          onPressed: busy ? null : () => _is(f),
+          onPressed: busy || !etkin ? null : () => _is(f),
           icon: Icon(ikon),
           label: Text(ad),
         );
@@ -1276,13 +1451,37 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SegmentedButton<int>(
+          showSelectedIcon: false,
           segments: const [
-            ButtonSegment(value: 0, label: Text('Özet')),
-            ButtonSegment(value: 1, label: Text('Yanıtlar')),
-            ButtonSegment(value: 2, label: Text('Değerlendirme')),
+            ButtonSegment(
+              value: 0,
+              label: Text('Özet', maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            ButtonSegment(
+              value: 1,
+              label: Text(
+                'Yanıtlar',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            ButtonSegment(
+              value: 2,
+              tooltip: 'Değerlendirme',
+              label: Text(
+                'Değerlendirme',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
           selected: {sekme},
-          onSelectionChanged: (s) => setState(() => sekme = s.single),
+          onSelectionChanged: busy
+              ? null
+              : (s) => setState(() {
+                  sekme = s.single;
+                  _yanitSeciminiKapat();
+                }),
         ),
         const SizedBox(height: 12),
         if (sekme == 0) ...[
@@ -1303,30 +1502,95 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             if (link != null) SelectableText(link!),
           ]),
         ] else ...[
-          for (final r in tercihler.where((r) => r['bekliyor'] != true))
-            _kart(
-              '${r['OkulNo']} • ${r['Ad']} ${r['Soyad']}',
-              r['onayli'] == true
-                  ? Icons.check_circle
-                  : Icons.assignment_outlined,
-              [
-                Text(
-                  (r['tercihler'] as List)
-                      .map((d) => projeDersleri[d])
-                      .join(' → '),
+          if (yanitSecimModu)
+            Row(
+              children: [
+                Expanded(
+                  child: CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      'Tümünü seç (${yanitSecimi.length}/${hamYanitlar.length})',
+                    ),
+                    value:
+                        hamYanitlar.isNotEmpty &&
+                        yanitSecimi.length == hamYanitlar.length,
+                    onChanged: busy
+                        ? null
+                        : (v) => setState(() {
+                            yanitSecimi.clear();
+                            if (v == true) {
+                              yanitSecimi.addEntries(
+                                hamYanitlar.map(
+                                  (y) => MapEntry(
+                                    y['Id'] as int,
+                                    y['KaynakSurum'] as String,
+                                  ),
+                                ),
+                              );
+                            }
+                          }),
+                  ),
                 ),
-                if ((r['hatalar'] as List).isNotEmpty)
-                  Text((r['hatalar'] as List).join('\n')),
+                IconButton(
+                  tooltip: 'Seçimi kapat',
+                  onPressed: busy ? null : () => setState(_yanitSeciminiKapat),
+                  icon: const Icon(Icons.close),
+                ),
               ],
             ),
+          if (hamYanitlar.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Henüz yanıt alınmadı.'),
+            ),
+          for (final r in yanitSatirlari)
+            Card(
+              key: ValueKey('proje-yanit-${r['yanitId']}'),
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
+                leading: yanitSecimModu
+                    ? Checkbox(
+                        value: yanitSecimi.containsKey(r['yanitId']),
+                        onChanged: busy || salt ? null : (_) => _yanitSec(r),
+                      )
+                    : Icon(
+                        r['onayli'] == true
+                            ? Icons.check_circle_outline
+                            : Icons.assignment_outlined,
+                      ),
+                title: Text(
+                  '${r['OkulNo']} • ${r['Ad']} ${r['Soyad']}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      (r['tercihler'] as List).indexed
+                          .map((e) => '${e.$1 + 1}. ${projeDersleri[e.$2]}')
+                          .join('\n'),
+                    ),
+                    if ((r['hatalar'] as List).isNotEmpty)
+                      Text(
+                        (r['hatalar'] as List).join('\n'),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    if (r['onayli'] == true) const Text('Onaylı'),
+                  ],
+                ),
+                onLongPress: busy || salt ? null : () => _yanitSec(r),
+                onTap: busy || salt
+                    ? null
+                    : () => yanitSecimModu
+                          ? _yanitSec(r)
+                          : _is(() => _tercihDuzenle(r)),
+              ),
+            ),
         ],
-        if (!salt)
-          _buton(
-            'Ortak form ayrıntısı / yanıt düzenleme',
-            Icons.open_in_new,
-            _ortakForm,
-            ikincil: true,
-          ),
       ],
     );
   }
@@ -1587,6 +1851,10 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && !busy) {
           setState(() {
+            if (yanitSecimModu) {
+              _yanitSeciminiKapat();
+              return;
+            }
             yeni = false;
             proje = null;
           });
@@ -1607,6 +1875,10 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   onPressed: busy
                       ? null
                       : () => setState(() {
+                          if (yanitSecimModu) {
+                            _yanitSeciminiKapat();
+                            return;
+                          }
                           yeni = false;
                           proje = null;
                         }),
@@ -1618,6 +1890,18 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
           padding: const EdgeInsets.all(12),
           children: [
             if (busy) const LinearProgressIndicator(),
+            if (silmeIlerleme != null)
+              Row(
+                children: [
+                  Expanded(child: Text(silmeIlerleme!)),
+                  TextButton(
+                    onPressed: silmeDurdur
+                        ? null
+                        : () => setState(() => silmeDurdur = true),
+                    child: const Text('Durdur'),
+                  ),
+                ],
+              ),
             if (hata != null) _bilgi(hata!, uyari: true),
             if (sonuc != null) _bilgi(sonuc!),
             if (salt) _bilgi('Geçmiş atama • Salt okunur'),
@@ -1645,7 +1929,10 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                         ),
                       ),
                   ],
-                  onSelected: (v) => setState(() => ekran = v),
+                  onSelected: (v) => setState(() {
+                    ekran = v;
+                    _yanitSeciminiKapat();
+                  }),
                   child: const Padding(
                     padding: EdgeInsets.symmetric(vertical: 6),
                     child: Row(
@@ -1731,13 +2018,31 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   : const Color(0xff008a24),
             ),
           ] else if (ekran == 1 && !salt) ...[
-            _buton('Yanıtları Getir', Icons.refresh, _yanitAl),
-            _buton(
-              'Hatırlatma Gönder',
-              Icons.notifications_outlined,
-              () => _gonder(hatirlat: true),
-              ikincil: true,
-            ),
+            if (yanitSecimModu) ...[
+              _buton(
+                'Toplu Onayla (${yanitSecimi.length})',
+                Icons.check,
+                _yanitlariOnayla,
+                etkin: yanitSecimi.isNotEmpty,
+                renk: const Color(0xff008a24),
+              ),
+              _buton(
+                'Toplu Sil (${yanitSecimi.length})',
+                Icons.delete_outline,
+                _yanitlariSil,
+                etkin: yanitSecimi.isNotEmpty,
+                ikincil: true,
+                renk: const Color(0xffd92737),
+              ),
+            ] else ...[
+              _buton('Yanıtları Getir', Icons.refresh, _yanitAl),
+              _buton(
+                'Hatırlatma Gönder',
+                Icons.notifications_outlined,
+                () => _gonder(hatirlat: true),
+                ikincil: true,
+              ),
+            ],
           ] else if (ekran == 2 && !salt) ...[
             _buton('Düzenle', Icons.edit_outlined, _ortakForm, ikincil: true),
             _buton('Geçerlileri seç', Icons.checklist, () async {
