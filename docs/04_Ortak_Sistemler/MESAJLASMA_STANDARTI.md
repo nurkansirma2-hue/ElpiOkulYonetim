@@ -13,7 +13,7 @@ Bu belge geliştirme standardıdır. Mevcut bütün ekranların bu standarda ge�
 anlamına gelmez. Uyarlama, ilgili modülün yetkilendirilmiş geliştirme kapsamında
 yapılır. Bu belgenin oluşturulması ekran veya veri modeli değişikliği değildir.
 
-Görsel düzen için [UI_STANDARDI.md](UI_STANDARDI.md) esas alınır; alıcı seçimi ve
+Görsel düzen için [UI_STANDARDI.md](../03_Tasarim/UI_STANDARDI.md) esas alınır; alıcı seçimi ve
 gönderim davranışında bu belge uygulanır. Kullanıcının görevdeki açık talimatları
 önceliklidir.
 
@@ -179,3 +179,6 @@ formun öğrenci kapsamı korunarak ortak alıcı seçimiyle birleştirilmesidir
 
 Test verileriyle yapılan kontroller ile gerçek Google/telefon gönderimi ayrı
 raporlanır. Yapılmayan canlı kontrol başarılı kabul edilmez.
+
+## Forma özel akış
+FORM_MODULU_STANDARTI.md içindeki doğrulanmış doğrudan onay akışı, normal hazırlama ekranının forma özel istisnasıdır; gönderim onayı ve ortak motor kuralları değişmez.

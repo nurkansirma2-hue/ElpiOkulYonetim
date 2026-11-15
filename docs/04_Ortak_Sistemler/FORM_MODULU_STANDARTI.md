@@ -84,3 +84,6 @@ Mesaj at ve Seçililere hatırlat mevcut Mesajlaşma motorunu seçili öğretmen
 
 
 Öğretmen görüşünün Özet, Yanıtlar ve Değerlendirme sekmelerindeki eylemler ortak sayfanın sabit alt işlem alanında gösterilir. Form ön izlemesi ve dört saniyelik ipucu da bu alandadır. Özet: mesaj, ön izleme, hatırlatma, yanıt getirme; Yanıtlar: yenileme, ön izleme, görünürleri seçme, seçilenleri silme; Değerlendirme: yenileme, ön izleme ve mesaj. Fazla işlemler Diğer menüsündedir. Silme için satır seçimi ve mevcut onay gereklidir. Salt okunur kayıtlarda yazma işlemleri gösterilmez.
+
+## Sürüm ve kapsam açıklaması
+Öğrenci Bilgi Formu için yukarıdaki yeni açılır liste kuralı geçerlidir; eski üç kimlik sorulu formlar korunur. Doğrudan mesaj onayı bu belgede tanımlanan form akışlarına özgüdür; diğer mesajlaşma akışları genel standardı izler.
