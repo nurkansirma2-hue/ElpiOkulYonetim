@@ -74,6 +74,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   List<Map<String, Object?>> hamYanitlar = [];
   final kapasite = <int, int>{};
   Map<String, dynamic>? proje, plan;
+  Map<String, dynamic>? analiz;
   Map<String, Object?>? form;
   String? hata, sonuc, link;
   bool busy = true, yeni = false, kontenjan = false, sadeceHata = false;
@@ -182,6 +183,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             !hamYanitlar.any((y) => y['Id'] == id && y['KaynakSurum'] == surum),
       );
       ogretmenler = await widget.service.projeDersOgretmenleri(b, atama);
+      analiz = await widget.service.projeAnalizi(b, atama, formId);
       onaySecimi.removeWhere(
         (id, imza) => !tercihler.any(
           (r) =>
@@ -816,6 +818,161 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       formId,
       kontenjan ? kapasite : null,
     );
+  }
+
+  Future<void> _sonuclandir() async {
+    await _kontrol();
+    final an = await widget.service.projeAnalizi(b, atama, formId);
+    if (an['sonuclanabilir'] != true) {
+      throw StateError(
+        'Önce eksik/hatalı tercihleri tamamlayın, bütün öğrencilerin tercihlerini onaylayın ve ders dağıtımını kaydedin.',
+      );
+    }
+    if (!mounted) return;
+    if (!await _onay(
+      'Proje ders seçimini sonuçlandır',
+      '${an['yerlesen']} öğrencinin ders seçimi kesinleştirilecek. Sonuçlar ilgili ders öğretmenlerine mesaj olarak hazırlanabilecek.',
+    )) {
+      return;
+    }
+    await widget.service.projeSonuclandir(
+      b,
+      atama,
+      formId,
+      an['imza'] as String,
+    );
+    await _yukle();
+    sonuc =
+        'Proje ders seçimi sonuçlandırıldı. Ders kartından ilgili öğretmene mesaj hazırlayabilirsiniz.';
+  }
+
+  Future<void> _dersOgretmeniSec(int dersId) async {
+    await _kontrol();
+    final ms = MesajlasmaService.instance;
+    final mb = await ms.hazirla();
+    if (mb.okulId != b.okulId ||
+        mb.ogretmenId != b.ogretmenProfilId ||
+        mb.yil != b.egitimOgretimYili) {
+      throw StateError('Öğretmen kapsamı değişti.');
+    }
+    final adaylar = await ms.aliciAdaylari(
+      mb,
+      tur: MesajKisiTuru.ogretmen,
+      sinifId: sinif,
+    );
+    final ders =
+        (analiz!['dersler'] as List).firstWhere((d) => d['dersId'] == dersId)
+            as Map;
+    final ids = (ders['ogretmenler'] as List).map((k) => k['KisiId']).toSet();
+    final secim = {
+      for (final k in adaylar.where((k) => ids.contains(k.kisiId)))
+        k.secimAnahtari: k,
+    };
+    if (!mounted) return;
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (c) => StatefulBuilder(
+          builder: (c, set) => OrtakSayfa(
+            appBar: ModulUstBar(title: Text('${ders['dersAdi']} • Öğretmen')),
+            body: CustomScrollView(
+              slivers: [
+                MesajAliciSecimSliver(
+                  adaylar: adaylar,
+                  siniflar: {sinif: '${widget.atama['SinifKodu']}'},
+                  secilenler: secim,
+                  sadeceOgretmen: true,
+                  iletisimDuzenleme: false,
+                  baslangicSinifId: sinif,
+                  degistir: (ks) => set(() {
+                    secim
+                      ..clear()
+                      ..addEntries(ks.map((k) => MapEntry(k.secimAnahtari, k)));
+                  }),
+                  veliDuzenle: (_) async {},
+                  ogretmenDuzenle: (_, _) async {},
+                  kisiDuzenle: (_) async {},
+                ),
+                if (adaylar.isEmpty)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        'Bu sınıf için kayıtlı ders öğretmeni yok. Ortak Mesajlaşma rehberinden sınıf öğretmenlerini ekleyin.',
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            bottomNavigationBar: Padding(
+              padding: const EdgeInsets.all(12),
+              child: FilledButton(
+                onPressed: secim.isEmpty ? null : () => Navigator.pop(c, true),
+                child: const Text('Öğretmeni eşleştir'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (ok != true) return;
+    await widget.service.projeDersOgretmeniEsle(
+      b,
+      atama,
+      formId,
+      dersId,
+      secim.values.map((k) => k.kisiId).toSet(),
+    );
+    await _yukle();
+  }
+
+  Future<void> _ogretmeneSonucMesaji(int dersId) async {
+    await _kontrol();
+    final paket = await widget.service.projeSonucMesaji(
+      b,
+      atama,
+      formId,
+      dersId,
+    );
+    final ids = (paket['aliciIds'] as List).cast<String>().toSet();
+    final baglar = ids.map((id) => 'Ogretmen:$id:$sinif').toSet();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        pageBuilder: (_, _, _) => MesajlasmaScreen(
+          kaynakModul: 'RehberlikProjeSonuc',
+          kaynakKayit: '$atama:$formId:$dersId:${paket['imza']}',
+          ogretmenSinifId: sinif,
+          baslangicOgretmenIdleri: ids,
+          baslangicKisiBaglari: baglar,
+          baslangicMetni: paket['metin'] as String,
+          yalnizGonderimOnayi: true,
+          gonderimOnizlemesiniAc: true,
+          takipPenceresi: true,
+          kaynakKontrol: (mb) async {
+            await _kontrol();
+            if (mb.okulId != b.okulId ||
+                mb.ogretmenId != b.ogretmenProfilId ||
+                mb.yil != b.egitimOgretimYili) {
+              throw StateError('Mesaj kapsamı değişti.');
+            }
+            final guncel = await widget.service.projeSonucMesaji(
+              b,
+              atama,
+              formId,
+              dersId,
+            );
+            if (guncel['imza'] != paket['imza']) {
+              throw StateError(
+                'Proje sonucu veya ders öğretmeni değişti. Mesajı yeniden hazırlayın.',
+              );
+            }
+          },
+        ),
+      ),
+    );
+    if (mounted) await _yukle();
   }
 
   Future<void> _dagitimKaydet() async {
@@ -1501,7 +1658,9 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             Text('Son Gün: ${_tarihYaz(proje!['sonGun'] as String?)}'),
             if (link != null) SelectableText(link!),
           ]),
-        ] else ...[
+        ] else if (sekme == 2)
+          _degerlendirme()
+        else ...[
           if (yanitSecimModu)
             Row(
               children: [
@@ -1591,6 +1750,124 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               ),
             ),
         ],
+      ],
+    );
+  }
+
+  Widget _degerlendirme() {
+    final an = analiz;
+    if (an == null) return _bilgi('Analiz için verileri yenileyin.');
+    final tamam = an['sonuclandi'] == true;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _kart('Proje Ders Seçimi Analizi', Icons.analytics_outlined, [
+          _istatistik([
+            ('Öğrenci', an['toplam'] as int, Colors.blue),
+            ('Onaylı', an['onayli'] as int, Colors.green),
+            ('Yerleşen', an['yerlesen'] as int, Colors.purple),
+          ]),
+          Text(
+            '${an['bekleyen']} yanıt bekleniyor • ${an['sorunlu']} sorunlu yanıt',
+          ),
+          const SizedBox(height: 8),
+          Text(
+            tamam
+                ? 'Proje ders seçimi sonuçlandırıldı'
+                : 'Proje ders seçimi henüz sonuçlandırılmadı',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          if (tamam)
+            Text('Sonuçlandırma: ${_tarihYaz(an['sonucTarihi'] as String?)}'),
+        ]),
+        if (!tamam && an['sonuclanabilir'] != true)
+          _bilgi(
+            'Eksik veya hatalı yanıtları tamamlayın, tercihleri onaylayın ve bütün öğrencileri derslere yerleştirin. Sonuçlandırma güncel dağıtımı kesinleştirir.',
+            uyari: true,
+          ),
+        if (!salt)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buton(
+                'Tercihleri Kontrol Et',
+                Icons.fact_check_outlined,
+                () async {
+                  ekran = 2;
+                },
+                ikincil: true,
+              ),
+              _buton('Ders Dağıtımı', Icons.school_outlined, () async {
+                ekran = 3;
+              }, ikincil: true),
+            ],
+          ),
+        for (final d in (an['dersler'] as List).cast<Map<String, dynamic>>())
+          _kart('${d['dersAdi']}', Icons.bar_chart, [
+            Text(
+              '1. tercih: ${(d['tercihler'] as List)[0]} • 2. tercih: ${(d['tercihler'] as List)[1]} • 3. tercih: ${(d['tercihler'] as List)[2]}',
+            ),
+            Text('Yerleşen öğrenci: ${d['yerlesen']}'),
+            Text(
+              (d['ogretmenler'] as List).isEmpty
+                  ? 'Ders öğretmeni eşleştirilmemiş'
+                  : 'Ders öğretmeni: ${(d['ogretmenler'] as List).map((k) => k['AdSoyad']).join(', ')}',
+            ),
+            if (!salt)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buton(
+                    'Öğretmen Eşleştir',
+                    Icons.person_search_outlined,
+                    () => _dersOgretmeniSec(d['dersId'] as int),
+                    ikincil: true,
+                  ),
+                  _buton(
+                    'Öğretmene Mesaj',
+                    Icons.send_outlined,
+                    () => _ogretmeneSonucMesaji(d['dersId'] as int),
+                    etkin:
+                        tamam &&
+                        (d['yerlesen'] as int) > 0 &&
+                        (d['ogretmenler'] as List).isNotEmpty,
+                  ),
+                ],
+              ),
+          ]),
+        Text(
+          'Öğrenci Bazlı Sonuçlar',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        for (final r in (an['ogrenciler'] as List).cast<Map<String, dynamic>>())
+          Card(
+            child: ListTile(
+              leading: Icon(
+                r['dersId'] == null
+                    ? Icons.pending_outlined
+                    : Icons.check_circle_outline,
+              ),
+              title: Text(
+                '${r['OkulNo']} • ${r['Ad']} ${r['Soyad']}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Sonuç: ${r['dersAdi'] ?? 'Henüz yerleşmedi'}'),
+                  Text('${r['durum']}'),
+                  if ((r['hatalar'] as List).isNotEmpty)
+                    Text((r['hatalar'] as List).join('\n')),
+                ],
+              ),
+              onTap: salt || busy || r['yanitId'] == null
+                  ? null
+                  : () => _is(() => _tercihDuzenle(r)),
+            ),
+          ),
       ],
     );
   }
@@ -2018,7 +2295,20 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   : const Color(0xff008a24),
             ),
           ] else if (ekran == 1 && !salt) ...[
-            if (yanitSecimModu) ...[
+            if (sekme == 2) ...[
+              _buton('Analizi Yenile', Icons.refresh, _yukle, ikincil: true),
+              _buton(
+                analiz?['sonuclandi'] == true
+                    ? 'Sonuçlandırıldı'
+                    : 'Proje Seçimini Sonuçlandır',
+                Icons.check_circle_outline,
+                _sonuclandir,
+                etkin:
+                    analiz?['sonuclanabilir'] == true &&
+                    analiz?['sonuclandi'] != true,
+                renk: const Color(0xff008a24),
+              ),
+            ] else if (yanitSecimModu) ...[
               _buton(
                 'Toplu Onayla (${yanitSecimi.length})',
                 Icons.check,

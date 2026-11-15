@@ -240,7 +240,7 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
   }
 
   Future<List<Map<String, dynamic>>> _projeTercihler(
-    Transaction tx,
+    DatabaseExecutor tx,
     Map<String, Object?> a,
     Map<String, dynamic> p,
   ) async {
@@ -394,6 +394,7 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
       }
       // Değişen onay, eski dağıtımı kesin sonuç gibi göstermez.
       p['dagitimOnayli'] = false;
+      p['sonuclandi'] = false;
     }, yazma: true);
   }
 
@@ -501,6 +502,7 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
       p['dagitimImzalari'] = imzalar;
       p['dagitimOnayli'] = true;
       p['dagitimTarihi'] = DateTime.now().toUtc().toIso8601String();
+      p['sonuclandi'] = false;
     }, yazma: true);
   }
 
@@ -512,7 +514,7 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
     return db.transaction((tx) async {
       final a = await _atama(tx, b, atama);
       final rows = await tx.rawQuery(
-        '''SELECT DISTINCT d.DersId,k.AdSoyad AS OgretmenAdi
+        '''SELECT DISTINCT d.DersId,k.KisiId,k.AdSoyad AS OgretmenAdi
         FROM MesajOgretmenSinifDers d JOIN MesajOgretmenKisi k ON k.KisiId=d.KisiId
         WHERE d.SinifSubeId=? AND d.EgitimOgretimYili=?
         AND k.OkulId=? AND k.SahipProfilId=? AND k.Aktif=1''',
@@ -526,6 +528,298 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
       await _kontrol(tx, b);
       return rows;
     });
+  }
+
+  String _projeSonucImzasi(
+    Map<String, dynamic> p,
+    List<Map<String, dynamic>> rows,
+  ) {
+    final dag = Map<String, dynamic>.from(p['dagitim'] as Map);
+    final keys = dag.keys.toList()..sort();
+    final ids = rows.where((r) => r['onayli'] == true).toList()
+      ..sort(
+        (a, b) => (a['OgrenciId'] as int).compareTo(b['OgrenciId'] as int),
+      );
+    return sha256
+        .convert(
+          utf8.encode(
+            jsonEncode([
+              p['formId'],
+              for (final key in keys) [key, dag[key]],
+              for (final r in ids) [r['OgrenciId'], r['imza']],
+            ]),
+          ),
+        )
+        .toString();
+  }
+
+  Future<List<Map<String, Object?>>> _projeOgretmenAdaylari(
+    DatabaseExecutor tx,
+    BireyselRehberlikBaglami b,
+    Map<String, Object?> a,
+  ) => tx.rawQuery(
+    '''
+    SELECT k.KisiId,k.AdSoyad FROM MesajOgretmenKisi k
+    JOIN MesajOgretmenSinif s ON s.KisiId=k.KisiId
+    WHERE k.OkulId=? AND k.SahipProfilId=? AND k.Aktif=1
+      AND s.SinifSubeId=? AND s.EgitimOgretimYili=?
+    ORDER BY k.AdSoyad,k.KisiId''',
+    [b.okulId, b.ogretmenProfilId, a['SinifSubeId'], a['EgitimOgretimYili']],
+  );
+
+  Future<Map<String, dynamic>> _projeAnaliz(
+    DatabaseExecutor tx,
+    BireyselRehberlikBaglami b,
+    Map<String, Object?> a,
+    Map<String, dynamic> p,
+  ) async {
+    final rows = await _projeTercihler(tx, a, p);
+    final dag = Map<String, dynamic>.from(p['dagitim'] as Map);
+    final imzalar = Map<String, dynamic>.from(
+      p['dagitimImzalari'] as Map? ?? {},
+    );
+    final onayli = rows.where((r) => r['onayli'] == true).toList();
+    final dagGuncel =
+        p['dagitimOnayli'] == true &&
+        onayli.length == imzalar.length &&
+        onayli.every((r) => imzalar['${r['OgrenciId']}'] == r['imza']);
+    final imza = _projeSonucImzasi(p, rows);
+    final dersler = Map<String, dynamic>.from(p['dersler'] as Map);
+    final adaylar = await _projeOgretmenAdaylari(tx, b, a);
+    final baglar = await tx.query(
+      'MesajOgretmenSinifDers',
+      where: 'SinifSubeId=? AND EgitimOgretimYili=?',
+      whereArgs: [a['SinifSubeId'], a['EgitimOgretimYili']],
+    );
+    final eslemeler = Map<String, dynamic>.from(
+      p['dersOgretmenleri'] as Map? ?? {},
+    );
+    final dersAnalizi = <Map<String, dynamic>>[];
+    for (final e in dersler.entries) {
+      final id = int.parse(e.key);
+      final kayitli = eslemeler[e.key] as List?;
+      final ogretmenIds =
+          kayitli?.cast<String>().toSet() ??
+          baglar
+              .where((d) => d['DersId'] == id)
+              .map((d) => d['KisiId'] as String)
+              .toSet();
+      dersAnalizi.add({
+        'dersId': id,
+        'dersAdi': e.value,
+        'tercihler': [
+          for (var i = 0; i < 3; i++)
+            rows
+                .where(
+                  (r) =>
+                      (r['hatalar'] as List).isEmpty &&
+                      (r['tercihler'] as List).length > i &&
+                      (r['tercihler'] as List)[i] == id,
+                )
+                .length,
+        ],
+        'yerlesen': dagGuncel ? dag.values.where((d) => d == id).length : 0,
+        'ogretmenler': adaylar
+            .where((k) => ogretmenIds.contains(k['KisiId']))
+            .toList(),
+      });
+    }
+    final ogrenciler = <Map<String, dynamic>>[];
+    for (final r in rows) {
+      final dersId = dagGuncel ? dag['${r['OgrenciId']}'] as int? : null;
+      final tercihler = (r['tercihler'] as List).cast<int>();
+      ogrenciler.add({
+        ...r,
+        'dersId': dersId,
+        'dersAdi': dersler['$dersId'],
+        'yerlesmeSirasi': dersId == null ? null : tercihler.indexOf(dersId) + 1,
+        'durum': r['bekliyor'] == true
+            ? 'Yanıt bekleniyor'
+            : (r['hatalar'] as List).isNotEmpty
+            ? 'Kontrol gerekli'
+            : r['onayli'] != true
+            ? 'Tercih onayı bekliyor'
+            : dersId == null
+            ? 'Yerleşmedi'
+            : '${tercihler.indexOf(dersId) + 1}. tercihine yerleşti',
+      });
+    }
+    final toplam = (p['ogrenciler'] as List).length;
+    final tam =
+        dagGuncel &&
+        rows.length == toplam &&
+        rows.every(
+          (r) => r['onayli'] == true && dag.containsKey('${r['OgrenciId']}'),
+        );
+    return {
+      'toplam': toplam,
+      'gecerli': rows.where((r) => (r['hatalar'] as List).isEmpty).length,
+      'bekleyen': rows.where((r) => r['bekliyor'] == true).length,
+      'sorunlu': rows
+          .where(
+            (r) => r['bekliyor'] != true && (r['hatalar'] as List).isNotEmpty,
+          )
+          .length,
+      'onayli': onayli.length,
+      'yerlesen': dagGuncel ? dag.length : 0,
+      'dagitimGuncel': dagGuncel,
+      'sonuclanabilir': tam,
+      'sonuclandi': tam && p['sonuclandi'] == true && p['sonucImzasi'] == imza,
+      'sonucTarihi': p['sonucTarihi'],
+      'imza': imza,
+      'dersler': dersAnalizi,
+      'ogrenciler': ogrenciler,
+    };
+  }
+
+  Future<Map<String, dynamic>> projeAnalizi(
+    BireyselRehberlikBaglami b,
+    int atama,
+    int formId,
+  ) => _projeIslem(b, atama, formId, (tx, a, p) => _projeAnaliz(tx, b, a, p));
+
+  Future<void> projeSonuclandir(
+    BireyselRehberlikBaglami b,
+    int atama,
+    int formId,
+    String beklenenImza,
+  ) => _projeIslem(b, atama, formId, (tx, a, p) async {
+    final analiz = await _projeAnaliz(tx, b, a, p);
+    if (analiz['imza'] != beklenenImza) {
+      throw StateError('Yanıt veya dağıtım değişti. Analizi yenileyin.');
+    }
+    if (analiz['sonuclanabilir'] != true) {
+      throw StateError(
+        'Bütün hedef öğrencilerin geçerli tercihleri onaylanıp derslere yerleştirilmeden sonuçlandırılamaz.',
+      );
+    }
+    p['sonuclandi'] = true;
+    p['sonucImzasi'] = beklenenImza;
+    p['sonucTarihi'] = DateTime.now().toUtc().toIso8601String();
+    final gecmis = (p['sonucGecmisi'] as List? ?? []).toList();
+    if (!gecmis.any((g) => g['imza'] == beklenenImza)) {
+      gecmis.add({
+        'imza': beklenenImza,
+        'tarih': p['sonucTarihi'],
+        'dagitim': Map<String, dynamic>.from(p['dagitim'] as Map),
+      });
+    }
+    p['sonucGecmisi'] = gecmis;
+  }, yazma: true);
+
+  Future<void> projeDersOgretmeniEsle(
+    BireyselRehberlikBaglami b,
+    int atama,
+    int formId,
+    int dersId,
+    Set<String> kisiIds,
+  ) {
+    final ids = Set<String>.of(kisiIds);
+    return _projeIslem(b, atama, formId, (tx, a, p) async {
+      if (!(p['dersler'] as Map).containsKey('$dersId')) {
+        throw StateError('Ders bu proje formunda yok.');
+      }
+      final adaylar = await _projeOgretmenAdaylari(tx, b, a);
+      if (ids.isEmpty ||
+          !ids.every((id) => adaylar.any((k) => k['KisiId'] == id))) {
+        throw StateError(
+          'Yalnız bu sınıfın kayıtlı ders öğretmenleri seçilebilir.',
+        );
+      }
+      final eslemeler = Map<String, dynamic>.from(
+        p['dersOgretmenleri'] as Map? ?? {},
+      );
+      eslemeler['$dersId'] = ids.toList()..sort();
+      p['dersOgretmenleri'] = eslemeler;
+    }, yazma: true);
+  }
+
+  Future<Map<String, dynamic>> projeSonucMesaji(
+    BireyselRehberlikBaglami b,
+    int atama,
+    int formId,
+    int dersId,
+  ) => _projeIslem(b, atama, formId, (tx, a, p) async {
+    // Gönderim de güncel, yazılabilir rehberlik ataması ister.
+    await _atama(tx, b, atama, yazma: true);
+    return _projeSonucMesajiTx(tx, b, a, p, dersId);
+  });
+
+  /// Ortak mesaj motorunun mevcut işlemi içinde de doğrulanır. İç içe
+  /// transaction açmadan, bekleyen gönderimin güncel sonucunu kontrol eder.
+  Future<Map<String, dynamic>> projeSonucMesajiniDogrula(
+    DatabaseExecutor tx,
+    BireyselRehberlikBaglami b,
+    int atama,
+    int formId,
+    int dersId,
+  ) async {
+    final a = await _atama(tx, b, atama, yazma: true);
+    final veri = await _projeOku(tx, b, atama);
+    final projeler = (veri['talepler'] as List)
+        .where((p) => p['formId'] == formId)
+        .toList();
+    if (projeler.length != 1) {
+      throw StateError('Proje formu bu atamaya ait değil.');
+    }
+    return _projeSonucMesajiTx(
+      tx,
+      b,
+      a,
+      Map<String, dynamic>.from(projeler.single as Map),
+      dersId,
+    );
+  }
+
+  Future<Map<String, dynamic>> _projeSonucMesajiTx(
+    DatabaseExecutor tx,
+    BireyselRehberlikBaglami b,
+    Map<String, Object?> a,
+    Map<String, dynamic> p,
+    int dersId,
+  ) async {
+    final analiz = await _projeAnaliz(tx, b, a, p);
+    if (analiz['sonuclandi'] != true) {
+      throw StateError('Önce güncel proje ders seçimini sonuçlandırın.');
+    }
+    final ders = (analiz['dersler'] as List)
+        .cast<Map<String, dynamic>>()
+        .where((d) => d['dersId'] == dersId)
+        .firstOrNull;
+    if (ders == null) throw StateError('Ders bu proje formunda yok.');
+    final ogretmenler = (ders['ogretmenler'] as List)
+        .cast<Map<String, Object?>>();
+    if (ogretmenler.isEmpty) {
+      throw StateError('Bu ders için öğretmen eşleştirin.');
+    }
+    final rows = (analiz['ogrenciler'] as List)
+        .cast<Map<String, dynamic>>()
+        .where((r) => r['dersId'] == dersId)
+        .toList();
+    if (rows.isEmpty) throw StateError('Bu derse yerleşmiş öğrenci yok.');
+    final sinif = await tx.query(
+      'SinifSube',
+      columns: ['SinifKodu'],
+      where: 'SinifSubeId=?',
+      whereArgs: [a['SinifSubeId']],
+    );
+    final metin =
+        'Proje ödevi ders seçimi kesin sonuçları\n${b.okulAdi}\n${a['EgitimOgretimYili']} • ${sinif.single['SinifKodu']}\nDers: ${ders['dersAdi']}\n'
+        '${rows.map((r) => "${r['OkulNo']} - ${r['Ad']} ${r['Soyad']}").join('\n')}\nSınıf rehber öğretmeni: ${b.ogretmenAdi}';
+    if (metin.length > 4000) {
+      throw StateError('Liste mesaj sınırını aşıyor. Ders raporunu kullanın.');
+    }
+    final ids = ogretmenler.map((k) => k['KisiId'] as String).toList()..sort();
+    return {
+      'dersId': dersId,
+      'dersAdi': ders['dersAdi'],
+      'sinifId': a['SinifSubeId'],
+      'aliciIds': ids,
+      'metin': metin,
+      'imza': sha256
+          .convert(utf8.encode(jsonEncode([analiz['imza'], ids, metin])))
+          .toString(),
+    };
   }
 
   Future<void> projeDavetiniKaydet(

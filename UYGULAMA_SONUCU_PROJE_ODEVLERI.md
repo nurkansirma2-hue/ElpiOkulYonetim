@@ -90,3 +90,23 @@ Toplu silme mevcut Google/yerel silme planını kullanır. Güncel yanıtlar ve 
 Genişletilmiş proje test dosyası **16 test başarılı** sonucunu verdi. Ekran testi; dokunarak düzenlemeyi kaydetme, özgün yanıtı koruma, uzun basma, tümünü seçme, hatalı tercihleri atlayarak toplu onay, silmeyi iptal ve kısmi silmede kalan kayıtları korumayı doğrular. 320 px büyütülmüş yazı ve 400 px normal görünümün yanıt/seçim renderları incelendi. Sekme başlıkları kelime ortasından bölünmez; ders tercihleri numaralı sırayla gösterilir. Değişen ekran/test dosyalarının analizi temiz. Kanıtlar yerelde: `test-artifacts/proje-yanit-islemleri-test.txt` ve `test-artifacts/proje/*-5-yanit-listesi.png`, `*-5-yanit-secimi.png`.
 
 Kullanıcı bu son yanıt ekranı değişiklikleri için de **YAZ** onayı verdi. Proje ekranı, ilgili test dosyası ve bu rapor commit/push kapsamındadır. Test günlükleri ve ekran görüntüleri yerelde tutulur; manuel CI veya APK işlemi başlatılmaz.
+
+## Değerlendirme, sonuçlandırma ve ders öğretmenine bildirim — yerel çalışma
+
+`55dcee1` sonrasında Değerlendirme sekmesi gerçek proje ders seçimi analizine dönüştürüldü. Hedef öğrenci, onaylı tercih, yerleşen öğrenci, bekleyen ve sorunlu yanıt sayıları güncel kayıtlardan hesaplanır. Ders kartlarında 1./2./3. tercih talebi, yerleşen sayısı ve kayıtlı öğretmenler; öğrenci kartlarında sonuç dersi ve kaçıncı tercihine yerleştiği gösterilir. Eksik süreçten tercih kontrolüne ve dağıtıma geçilebilir. Yanıtlar sekmesindeki uzun basma/toplu işlem davranışı korunur.
+
+**Proje Seçimini Sonuçlandır**, bütün hedef öğrencilerin geçerli tercihleri onaylanıp güncel ders dağıtımı kaydedildiğinde açılır. Açık onay sonrası sonuç tarihi, dağıtım ve yanıt imzaları mevcut ayarlara kaydedilir. Yanıt değişikliği, yeniden tercih onayı veya dağıtım güncellemesi eski sonucu geçersiz kılar. Eski analizle sonuçlandırma durdurulur. Bu işlem proje ders seçimini kesinleştirir; ödev teslimi veya notlandırma kaydı oluşturmaz.
+
+Sonuçlanan dersin **Öğretmene Mesaj** işlemi yalnız o derse yerleşen öğrencilerin okul numarası/adı ve sınıf/yıl/ders bilgisini hazırlar. Kayıtlı ders bağlantısı bulunamazsa öğretmen uydurulmaz; **Öğretmen Eşleştir**, ortak alıcı bileşeninden aynı sınıfın kayıtlı öğretmenlerini seçtirir. Eşleştirme bu proje içinde saklanır; ana program değiştirilmez. Ortak mesaj onayında yalnız ilgili öğretmenler yer alır. Onaydan vazgeçmek değerlendirmeye döner. SMS/WhatsApp gönderimi mevcut ortak motorla yürür; ekranı açmak gönderildi sayılmaz.
+
+Gönderim öncesinde ve bekleyen ortak kuyruk yeniden kullanıldığında aktif atama, okul/profil/yıl, sonuç imzası ve ders öğretmeni yeniden doğrulanır. Sonuç veya öğretmen değişmişse eski mesaj gönderilmez. Bunun için ortak mesaj servisinin mevcut kaynak kontrolüne yalnız `RehberlikProjeSonuc` dalı eklendi; diğer mesaj kaynaklarının davranışı korunur. Yeni tablo, SQLite sürümü, paket veya gerçek veri değişikliği yoktur.
+
+Doğrulama:
+
+- Proje testleri: **21 başarılı, 0 başarısız**. Yeni kapsam: analiz sayaçları, eksik sonuçlandırmanın reddi, kalıcı kesin sonuç, değişen yanıtın sonucu bozması, aynı sınıfta öğretmen eşleştirme, ders dışı alıcının reddi ve değişen sonuçtan sonra bekleyen mesajda dış gönderim yapılmaması. Ekran testinde sonuçlandırma/onay, doğru öğretmen ve ders öğrenci listesi ile mesaj onayından geri dönüş doğrulandı.
+- 400 px normal ve 320 px büyütülmüş yazıda gerçek Flutter renderları incelendi; taşma hatası yok. Yeni kanıtlar: `test-artifacts/proje/*-5-degerlendirme*.png`.
+- Ortak mesajlaşma/alıcı/tekli onay/geçmiş seçimi: **49 başarılı, 16 başarısız**. Değişen iki ortak servis dosyasının `HEAD` sürümleriyle aynı seçim tekrar çalıştırıldı: **49 başarılı, aynı 16 test başarısız**; başarısız test adlarında fark yok. Sonrasında yerel değişiklikler byte düzeyinde geri yüklendi. Mevcut sürüm/yedek ve ekran beklentisi hataları bu kapsamda değiştirilmedi.
+- Doğrudan Dart analizinde yeni ekran, proje servisi, alıcı servisi ve testte sorun yok. Ortak mesaj ana dosyasında önceden bulunan dört `curly_braces_in_flow_control_structures` bilgi düzeyi bildirimi var; bu dosyanın tek değişikliği servis importudur. Hata/uyarı düzeyinde bulgu yok.
+- Günlükler: `test-artifacts/proje-degerlendirme-test.txt`, `proje-degerlendirme-mesaj-test.txt`, `proje-degerlendirme-mesaj-temel.txt`. Gerçek Google hesabı, telefon veya öğretmenlere mesaj gönderilmedi; APK derlenmedi.
+
+Yerel uygulama ve doğrulamaların ardından kullanıcı bu son kapsam için **YAZ** onayı verdi. Commit/push kapsamı: proje ekranı, proje servisi, ortak mesaj ana/alıcı servisleri, proje test dosyası ve bu rapor. Test günlükleri ve ekran görüntüleri yerelde tutulur; manuel CI veya APK işlemi başlatılmaz.

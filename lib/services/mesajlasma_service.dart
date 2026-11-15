@@ -11,6 +11,7 @@ import '../models/mesajlasma.dart';
 import '../models/mesaj_sablonu.dart';
 import '../models/ortak_import.dart';
 import 'calisma_modu_service.dart';
+import 'bireysel_rehberlik_service.dart';
 
 part 'mesaj_form_service.dart';
 part 'mesaj_sablon_service.dart';

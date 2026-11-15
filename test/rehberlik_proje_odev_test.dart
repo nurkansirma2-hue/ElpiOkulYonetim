@@ -17,6 +17,9 @@ import 'package:elpi_okul_yonetim/services/proje_odev_rapor_service.dart';
 import 'package:elpi_okul_yonetim/services/bireysel_belge_service.dart';
 import 'package:elpi_okul_yonetim/services/bireysel_bakim_service.dart';
 import 'package:elpi_okul_yonetim/screens/rehberlik_proje_odev_screen.dart';
+import 'package:elpi_okul_yonetim/screens/mesajlasma_screen.dart';
+import 'package:elpi_okul_yonetim/services/mesajlasma_service.dart';
+import 'package:elpi_okul_yonetim/models/mesajlasma.dart';
 import 'support/windows_memory_database.dart';
 
 class _ProjeYanitTestGoogle extends BilgiToplamaGoogleService {
@@ -208,6 +211,181 @@ void main() {
         x['OgrenciId'] as int: x['imza'] as String,
     });
   }
+
+  Future<void> ogretmenEkle(String kisi, int dersId, {int sinifId = 1}) async {
+    await db.insert('MesajOgretmenKisi', {
+      'KisiId': kisi,
+      'OkulId': 'okul',
+      'SahipProfilId': 1,
+      'AdSoyad': 'Öğretmen $dersId',
+      'Telefon': '05321112233',
+      'OlusturmaTarihi': 'test',
+      'GuncellemeTarihi': 'test',
+    });
+    await db.insert('MesajOgretmenSinif', {
+      'KisiId': kisi,
+      'SinifSubeId': sinifId,
+      'EgitimOgretimYili': '2026/2027',
+      'Kaynak': 'ElleDogrulandi',
+      'OlusturmaTarihi': 'test',
+    });
+    if (dersId > 0) {
+      await db.insert('MesajOgretmenSinifDers', {
+        'KisiId': kisi,
+        'SinifSubeId': sinifId,
+        'EgitimOgretimYili': '2026/2027',
+        'DersId': dersId,
+      });
+    }
+  }
+
+  Future<void> tamDagitim() async {
+    await yanit(1, [1, 2, 3]);
+    await yanit(2, [2, 1, 3]);
+    await yanit(3, [3, 1, 2]);
+    await onay();
+    await s.projeDagitiminiKaydet(
+      b,
+      1,
+      fid,
+      await s.projeDagitimOnizle(b, 1, fid, null),
+    );
+  }
+
+  test(
+    'değerlendirme gerçek tercih sayılarını ve eksik/hatalı öğrencileri analiz eder',
+    () async {
+      await yanit(1, [1, 2, 3]);
+      await yanit(2, [1, 1, 3]);
+      final an = await s.projeAnalizi(b, 1, fid);
+      expect(an['bekleyen'], 1);
+      expect(an['sorunlu'], 1);
+      expect(an['gecerli'], 1);
+      expect(an['yerlesen'], 0);
+      expect(
+        (an['dersler'] as List).firstWhere(
+          (d) => d['dersId'] == 1,
+        )['tercihler'],
+        [1, 0, 0],
+      );
+      await expectLater(
+        s.projeSonuclandir(b, 1, fid, an['imza'] as String),
+        throwsStateError,
+      );
+    },
+  );
+  test(
+    'sonuçlandırılan seçim kalıcıdır; öğretmen mesajı yalnız kendi dersinin öğrencilerini içerir',
+    () async {
+      const kisi = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+      await tamDagitim();
+      await ogretmenEkle(kisi, 1);
+      await expectLater(s.projeSonucMesaji(b, 1, fid, 1), throwsStateError);
+      final an = await s.projeAnalizi(b, 1, fid);
+      expect(an['sonuclanabilir'], true);
+      await s.projeSonuclandir(b, 1, fid, an['imza'] as String);
+      expect((await s.projeAnalizi(b, 1, fid))['sonuclandi'], true);
+      final paket = await s.projeSonucMesaji(b, 1, fid, 1);
+      expect(paket['aliciIds'], [kisi]);
+      expect(paket['metin'], contains('101 - Öğrenci1'));
+      expect(paket['metin'], isNot(contains('Öğrenci2')));
+      expect(paket['metin'], contains('9/C'));
+      expect(
+        (await s.projeTalepleri(b, 1)).single['sonucGecmisi'],
+        hasLength(1),
+      );
+    },
+  );
+  test('bekleyen öğretmen mesajı değişen sonuçta gönderilmez', () async {
+    const kisi = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    await tamDagitim();
+    await ogretmenEkle(kisi, 1);
+    await ogretmenEkle('cccccccccccccccccccccccccccccccc', 2);
+    final an = await s.projeAnalizi(b, 1, fid);
+    await s.projeSonuclandir(b, 1, fid, an['imza'] as String);
+    final paket = await s.projeSonucMesaji(b, 1, fid, 1);
+    var gonderim = 0;
+    final ms = MesajlasmaService(
+      databaseGetir: () async => db,
+      whatsappAc: (_, _) async {
+        gonderim++;
+      },
+    );
+    final mb = await ms.hazirla();
+    final adaylar = await ms.aliciAdaylari(mb, tur: MesajKisiTuru.ogretmen);
+    final kaynak = '1:$fid:1:${paket['imza']}';
+    await expectLater(
+      ms.kisilerleKuyrukOlustur(
+        mb,
+        MesajKisiOnIzleme(adaylar.where((k) => k.kisiId != kisi).toList()),
+        paket['metin'] as String,
+        kaynakModul: 'RehberlikProjeSonuc',
+        kaynakKayit: kaynak,
+      ),
+      throwsStateError,
+    );
+    final kuyruk = await ms.kisilerleKuyrukOlustur(
+      mb,
+      MesajKisiOnIzleme(adaylar.where((k) => k.kisiId == kisi).toList()),
+      paket['metin'] as String,
+      kaynakModul: 'RehberlikProjeSonuc',
+      kaynakKayit: kaynak,
+    );
+    await yanit(1, [2, 1, 3], zaman: '2026-11-17T11:00:00Z');
+    await expectLater(
+      ms.aliciyiAc(mb, kuyruk.id, kuyruk.alicilar.single.id),
+      throwsStateError,
+    );
+    expect(gonderim, 0);
+    expect(
+      (await ms.kuyrukGetir(mb, kuyruk.id)).alicilar.single.durum,
+      kuyruk.alicilar.single.durum,
+    );
+  });
+
+  test('sonuçtan sonra değişen cevap veya dağıtım mesajı durdurur', () async {
+    await tamDagitim();
+    await ogretmenEkle('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1);
+    final an = await s.projeAnalizi(b, 1, fid);
+    await s.projeSonuclandir(b, 1, fid, an['imza'] as String);
+    await yanit(1, [2, 1, 3], zaman: '2026-11-17T11:00:00Z');
+    expect((await s.projeAnalizi(b, 1, fid))['sonuclandi'], false);
+    await expectLater(s.projeSonucMesaji(b, 1, fid, 1), throwsStateError);
+    await expectLater(
+      s.projeSonuclandir(b, 1, fid, an['imza'] as String),
+      throwsStateError,
+    );
+  });
+  test(
+    'öğretmen eşleştirmesi yalnız aynı sınıfı kapsar ve mesaj imzasını değiştirir',
+    () async {
+      const a = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          c = 'cccccccccccccccccccccccccccccccc';
+      await tamDagitim();
+      await ogretmenEkle(a, 1);
+      await ogretmenEkle(c, 2);
+      final an = await s.projeAnalizi(b, 1, fid);
+      await s.projeSonuclandir(b, 1, fid, an['imza'] as String);
+      final onceki = await s.projeSonucMesaji(b, 1, fid, 1);
+      await s.projeDersOgretmeniEsle(b, 1, fid, 1, {c});
+      final yeni = await s.projeSonucMesaji(b, 1, fid, 1);
+      expect(yeni['aliciIds'], [c]);
+      expect(yeni['imza'], isNot(onceki['imza']));
+      await db.insert('SinifSube', {
+        'SinifSubeId': 2,
+        'SinifKodu': '9/D',
+        'EgitimOgretimYili': '2026/2027',
+        'OlusturmaTarihi': 'test',
+      });
+      await ogretmenEkle('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 3, sinifId: 2);
+      await expectLater(
+        s.projeDersOgretmeniEsle(b, 1, fid, 1, {
+          'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        }),
+        throwsStateError,
+      );
+    },
+  );
 
   Future<int> projeFormu(Map<int, String> secim) async {
     final id = await fs.formOlustur(
@@ -699,7 +877,10 @@ void main() {
     await tester.tap(find.text('Düzeltmeyi kaydet'));
     await bekle();
     expect(await fs.yanitlar(fb, fid), hasLength(2));
-    expect(await db.query('BilgiToplamaYanit'), hasLength(3));
+    expect(
+      await db.query('BilgiToplamaYanit', where: 'FormId=?', whereArgs: [fid]),
+      hasLength(3),
+    );
     await tester.longPress(ilk);
     await bekle();
     expect(find.text('Toplu Onayla (1)'), findsOneWidget);
@@ -749,6 +930,146 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();
     g.dispose();
+  }
+
+  Future<void> sonucEkraniniDogrula(
+    WidgetTester tester,
+    GlobalKey key,
+    Future<void> Function(String) capture,
+  ) async {
+    final onceki = fid;
+    var hazir = false;
+    final hazirlik = () async {
+      try {
+        fid = await projeFormu(dersler);
+        final qs = await fs.sorular(fb, fid);
+        await fs.googleBagla(fb, fid, 'sonuclandirma-form', {
+          for (final q in qs) q['AlanAnahtari'] as String: 'q${q['Id']}',
+        });
+        await tamDagitim();
+        await ogretmenEkle('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1);
+      } finally {
+        hazir = true;
+      }
+    }();
+    for (var i = 0; i < 100 && !hazir; i++) {
+      await tester.pump();
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+    }
+    expect(hazir, true);
+    await hazirlik;
+    tester.view.physicalSize = const Size(400, 850);
+    tester.view.devicePixelRatio = 1;
+    Future<void> bekle() async {
+      for (var i = 0; i < 80; i++) {
+        await tester.runAsync(() async {
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+        });
+        await tester.pump();
+        if (find.byType(AlertDialog).evaluate().isNotEmpty) {
+          await tester.pump(const Duration(milliseconds: 300));
+          return;
+        }
+        if (find.byType(LinearProgressIndicator).evaluate().isEmpty) break;
+      }
+      await tester.pumpAndSettle();
+    }
+
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: key,
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xff1675ed),
+            ),
+            fontFamily: 'NotoSans',
+          ),
+          home: RehberlikProjeOdevScreen(
+            service: s,
+            baglam: b,
+            formService: fs,
+            atama: const {
+              'RehberlikAtamaId': 1,
+              'SinifSubeId': 1,
+              'SinifKodu': '9/C',
+              'EgitimOgretimYili': '2026/2027',
+            },
+          ),
+        ),
+      ),
+    );
+    await bekle();
+    await tester.tap(find.text('Sınıfın proje dersleri'));
+    await bekle();
+    await tester.tap(find.text('Değerlendirme'));
+    await bekle();
+    expect(find.text('Proje Ders Seçimi Analizi'), findsOneWidget);
+    await capture('400-5-degerlendirme-hazir');
+    await tester.tap(find.text('Proje Seçimini Sonuçlandır'));
+    await bekle();
+    await tester.tap(find.text('Onayla').last);
+    await bekle();
+    expect(find.text('Sonuçlandırıldı'), findsOneWidget);
+    await capture('400-5-degerlendirme-sonuc');
+    final mesaj = find.widgetWithText(FilledButton, 'Öğretmene Mesaj').first;
+    await tester.ensureVisible(mesaj);
+    await tester.pumpAndSettle();
+    await tester.tap(mesaj);
+    await bekle();
+    expect(find.byType(MesajlasmaScreen), findsOneWidget);
+    final ekran = tester.widget<MesajlasmaScreen>(
+      find.byType(MesajlasmaScreen),
+    );
+    expect(ekran.baslangicKisiBaglari, {
+      'Ogretmen:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1',
+    });
+    expect(ekran.baslangicMetni, contains('101 - Öğrenci1'));
+    expect(ekran.baslangicMetni, isNot(contains('Öğrenci2')));
+    expect(ekran.yalnizGonderimOnayi, true);
+    expect(tester.takeException(), isNull);
+    for (
+      var i = 0;
+      i < 100 &&
+          find.text('Düzelt').evaluate().isEmpty &&
+          find.text('Gönderim başlatılamadı').evaluate().isEmpty;
+      i++
+    ) {
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+      });
+      await tester.pump();
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.text('Gönderim başlatılamadı'),
+      findsNothing,
+      reason: find
+          .byType(Text)
+          .evaluate()
+          .map((e) => (e.widget as Text).data)
+          .join(' | '),
+    );
+    expect(find.text('Mesajı gönder'), findsOneWidget);
+    await tester.tap(find.text('Düzelt').last);
+    for (
+      var i = 0;
+      i < 100 && find.byType(MesajlasmaScreen).evaluate().isNotEmpty;
+      i++
+    ) {
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+      });
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await bekle();
+    expect(find.byType(MesajlasmaScreen), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    fid = onceki;
   }
 
   testWidgets('320 ve büyük yazıda proje listesi, kontrol ve dağıtım taşmaz', (
@@ -869,6 +1190,13 @@ void main() {
       await bekle();
       await tester.tap(find.text('Özet'));
       await bekle();
+      await tester.tap(find.text('Değerlendirme'));
+      await bekle();
+      expect(find.text('Proje Ders Seçimi Analizi'), findsOneWidget);
+      await capture('${width.toInt()}-5-degerlendirme');
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Özet'));
+      await bekle();
       for (final (i, ad) in [
         (0, 'Form Daveti'),
         (2, 'Tercih Kontrolü'),
@@ -929,6 +1257,7 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
     }
+    await sonucEkraniniDogrula(tester, key, capture);
     await yanitIslemleriniDogrula(tester);
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();

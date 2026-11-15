@@ -491,6 +491,38 @@ extension MesajAliciIslemleri on MesajlasmaService {
     if (kaynak == odevBildirimArsivModulu) {
       throw StateError('Arşivlenmiş ödev mesajı yeniden gönderilemez.');
     }
+    if (kaynak == 'RehberlikProjeSonuc') {
+      final parcalar = (kayit ?? '').split(':');
+      if (parcalar.length != 4 ||
+          parcalar.take(3).any((v) => int.tryParse(v) == null)) {
+        throw StateError('Proje sonucundan yeni mesaj hazırlayın.');
+      }
+      final paket = await BireyselRehberlikService(modGetir: _mod)
+          .projeSonucMesajiniDogrula(
+            db,
+            BireyselRehberlikBaglami(
+              okulId: b.okulId,
+              ogretmenProfilId: b.ogretmenId,
+              okulAdi: b.okulAdi,
+              ogretmenAdi: b.ogretmenAdi,
+              egitimOgretimYili: b.yil,
+            ),
+            int.parse(parcalar[0]),
+            int.parse(parcalar[1]),
+            int.parse(parcalar[2]),
+          );
+      if (paket['imza'] != parcalar[3] ||
+          kisiler.any(
+            (k) =>
+                k.tur != MesajKisiTuru.ogretmen ||
+                k.sinifId != paket['sinifId'] ||
+                !(paket['aliciIds'] as List).contains(k.kisiId),
+          )) {
+        throw StateError(
+          'Proje sonucu veya ders öğretmeni değişti. Değerlendirmeden yeni mesaj hazırlayın.',
+        );
+      }
+    }
     if (kaynak == 'OdevBildirim') {
       final odev = await db.query(
         'OdevTanim',
