@@ -43,17 +43,39 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
     final db = await _db();
     return db.transaction((tx) async {
       final a = await _atama(tx, b, atama);
-      final rows = await tx.rawQuery(
-        '''SELECT DISTINCT d.DersId,d.DersAdi
-        FROM GecerliDersProgrami p JOIN Ders d ON d.DersId=p.DersId
-        WHERE p.SinifSubeId=? AND p.EgitimOgretimYili=? AND p.Aktif=1 AND d.Aktif=1
-        ORDER BY d.DersAdi''',
-        [a['SinifSubeId'], a['EgitimOgretimYili']],
-      );
+      final rows = await _projeSinifDersleri(tx, b, a);
       await _kontrol(tx, b);
       return rows;
     });
   }
+
+  Future<List<Map<String, Object?>>> _projeSinifDersleri(
+    DatabaseExecutor tx,
+    BireyselRehberlikBaglami b,
+    Map<String, Object?> a,
+  ) => tx.rawQuery(
+    '''
+    SELECT d.DersId,d.DersAdi FROM Ders d WHERE d.Aktif=1 AND (
+      EXISTS (SELECT 1 FROM DersSinif s WHERE s.DersId=d.DersId
+        AND s.SinifSubeId=? AND s.EgitimOgretimYili=? AND s.Aktif=1)
+      OR EXISTS (SELECT 1 FROM GecerliDersProgrami p WHERE p.DersId=d.DersId
+        AND p.SinifSubeId=? AND p.EgitimOgretimYili=? AND p.Aktif=1)
+      OR EXISTS (SELECT 1 FROM MesajOgretmenSinifDers m
+        JOIN MesajOgretmenKisi k ON k.KisiId=m.KisiId
+        WHERE m.DersId=d.DersId AND m.SinifSubeId=? AND m.EgitimOgretimYili=?
+          AND k.OkulId=? AND k.SahipProfilId=? AND k.Aktif=1))
+    ORDER BY d.DersAdi,d.DersId''',
+    [
+      a['SinifSubeId'],
+      a['EgitimOgretimYili'],
+      a['SinifSubeId'],
+      a['EgitimOgretimYili'],
+      a['SinifSubeId'],
+      a['EgitimOgretimYili'],
+      b.okulId,
+      b.ogretmenProfilId,
+    ],
+  );
 
   Future<List<Map<String, dynamic>>> projeTalepleri(
     BireyselRehberlikBaglami b,
@@ -89,8 +111,16 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
     await _sirali(
       () => db.transaction((tx) async {
         final a = await _atama(tx, b, atama, yazma: true);
-        if (kopya.length < 3 || kopya.length > 6) {
-          throw const FormatException('3–6 farklı ders seçin.');
+        if (kopya.length < 3 ||
+            kopya.length > 100 ||
+            kopya.keys.contains(0) ||
+            kopya.values.any(
+              (ad) => ad.trim().isEmpty || ad != ad.trim() || ad.length > 200,
+            ) ||
+            kopya.values.map(importNormalize).toSet().length != kopya.length) {
+          throw const FormatException(
+            'En az üç farklı ders seçin; ders adları boş veya tekrarlı olamaz.',
+          );
         }
         final f = await tx.query(
           'BilgiToplamaForm',
@@ -104,17 +134,17 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
           ],
         );
         if (f.length != 1) throw StateError('Form kapsamı değişti.');
-        final uygun = await tx.rawQuery(
-          '''SELECT DISTINCT d.DersId,d.DersAdi
-        FROM GecerliDersProgrami p JOIN Ders d ON d.DersId=p.DersId
-        WHERE p.SinifSubeId=? AND p.EgitimOgretimYili=? AND p.Aktif=1 AND d.Aktif=1''',
-          [a['SinifSubeId'], a['EgitimOgretimYili']],
-        );
+        final uygun = await _projeSinifDersleri(tx, b, a);
         if (!kopya.entries.every(
           (e) =>
+              // Negatif kimlik yalnız bu formda öğretmenin elle eklediği derstir.
+              // Ana ders kataloğuna veya başka modüllerin programına yazılmaz.
+              e.key < 0 ||
               uygun.any((d) => d['DersId'] == e.key && d['DersAdi'] == e.value),
         )) {
-          throw StateError('Dersler sınıfın güncel programında bulunmuyor.');
+          throw StateError(
+            'Dersler sınıfın güncel ders kayıtlarında bulunmuyor. Listeyi yenileyin.',
+          );
         }
         final hedefler = await tx.query(
           'BilgiToplamaHedef',

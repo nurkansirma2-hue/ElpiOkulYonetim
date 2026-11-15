@@ -128,6 +128,7 @@ void main() {
     List<int> secim, {
     String? id,
     String? zaman,
+    Map<int, String> dersAdlari = dersler,
   }) async {
     final qs = await fs.sorular(fb, fid);
     final kimlik = qs.first;
@@ -138,7 +139,7 @@ void main() {
       final key = q['AlanAnahtari'] as String;
       final value = key == 'ogrenciSecimi'
           ? etiket
-          : dersler[secim[int.parse(key.substring(key.length - 1)) - 1]];
+          : dersAdlari[secim[int.parse(key.substring(key.length - 1)) - 1]];
       answers[q['GoogleSoruId'] as String] = {
         'textAnswers': {
           'answers': [
@@ -164,6 +165,153 @@ void main() {
     });
   }
 
+  Future<int> projeFormu(Map<int, String> secim) async {
+    final id = await fs.formOlustur(
+      fb,
+      baslik: 'Sınıfın proje dersleri',
+      ogrenciListesi: true,
+      hedefTuru: 'OgrenciSec',
+      ogrenciIdleri: {1, 2, 3},
+      sorular: [
+        for (var i = 1; i <= 3; i++)
+          BilgiToplamaSorusu(
+            anahtar: 'projeTercih$i',
+            baslik: '$i. Ders',
+            veriTuru: 'Secenek',
+            zorunlu: true,
+            secenekler: secim.values.toList(),
+          ),
+      ],
+    );
+    await s.projeFormunuBagla(b, 1, id, secim, 'Açıklama');
+    return id;
+  }
+
+  test(
+    'sınıf ders kaydındaki bütün dersler gelir; altı ders sınırı yoktur',
+    () async {
+      for (var i = 4; i <= 8; i++) {
+        await db.insert('Ders', {
+          'DersId': i,
+          'DersAdi': 'Sınıf dersi $i',
+          'OlusturmaTarihi': 'test',
+        });
+        await db.insert('DersSinif', {
+          'DersId': i,
+          'SinifSubeId': 1,
+          'EgitimOgretimYili': '2026/2027',
+          'OlusturmaTarihi': 'test',
+        });
+      }
+      await db.insert('Ders', {
+        'DersId': 9,
+        'DersAdi': 'Geçmiş yıl dersi',
+        'OlusturmaTarihi': 'test',
+      });
+      await db.insert('DersSinif', {
+        'DersId': 9,
+        'SinifSubeId': 1,
+        'EgitimOgretimYili': '2025/2026',
+        'OlusturmaTarihi': 'test',
+      });
+      final liste = await s.projeDersleri(b, 1);
+      expect(liste, hasLength(8));
+      expect(liste.any((d) => d['DersId'] == 9), false);
+      final secim = {
+        for (final d in liste) d['DersId'] as int: d['DersAdi'] as String,
+      };
+      final id = await projeFormu(secim);
+      expect(
+        (await s.projeTalepleri(
+          b,
+          1,
+        )).singleWhere((p) => p['formId'] == id)['dersler'],
+        hasLength(8),
+      );
+    },
+  );
+  test(
+    'elle eklenen ders yalnız bu formda kalır ve dağıtıma bağlanır',
+    () async {
+      const secim = {1: 'Matematik', 2: 'Fizik', -1: 'Kimya'};
+      final onceki = await db.query('Ders');
+      fid = await projeFormu(secim);
+      final qs = await fs.sorular(fb, fid);
+      await fs.googleBagla(fb, fid, 'elle-dersli-google-form', {
+        for (final q in qs) q['AlanAnahtari'] as String: 'q${q['Id']}',
+      });
+      await yanit(1, [-1, 1, 2], dersAdlari: secim);
+      await onay();
+      final plan = await s.projeDagitimOnizle(b, 1, fid, null);
+      expect(plan['dagitim'], {'1': -1});
+      await s.projeDagitiminiKaydet(b, 1, fid, plan);
+      expect(await db.query('Ders'), onceki);
+      expect(
+        (await s.projeTalepleri(
+          b,
+          1,
+        )).singleWhere((p) => p['formId'] == fid)['dersler'],
+        {'1': 'Matematik', '2': 'Fizik', '-1': 'Kimya'},
+      );
+    },
+  );
+  test(
+    'elle eklenen ders adı tekrarlanamaz; ilgisiz katalog dersi bağlanamaz',
+    () async {
+      await expectLater(
+        projeFormu({1: 'Matematik', 2: 'Fizik', -1: 'matematik'}),
+        throwsFormatException,
+      );
+      await db.insert('Ders', {
+        'DersId': 4,
+        'DersAdi': 'İlgisiz ders',
+        'OlusturmaTarihi': 'test',
+      });
+      await expectLater(
+        projeFormu({1: 'Matematik', 2: 'Fizik', 4: 'İlgisiz ders'}),
+        throwsStateError,
+      );
+    },
+  );
+
+  test('sınıfın diğer ders öğretmenine bağlı ders de listeye alınır', () async {
+    const kisi = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    await db.insert('Ders', {
+      'DersId': 10,
+      'DersAdi': 'Biyoloji',
+      'OlusturmaTarihi': 'test',
+    });
+    await db.insert('MesajOgretmenKisi', {
+      'KisiId': kisi,
+      'OkulId': 'okul',
+      'SahipProfilId': 1,
+      'AdSoyad': 'Diğer Öğretmen',
+      'OlusturmaTarihi': 'test',
+      'GuncellemeTarihi': 'test',
+    });
+    await db.insert('MesajOgretmenSinif', {
+      'KisiId': kisi,
+      'SinifSubeId': 1,
+      'EgitimOgretimYili': '2026/2027',
+      'Kaynak': 'ElleDogrulandi',
+      'OlusturmaTarihi': 'test',
+    });
+    await db.insert('MesajOgretmenSinifDers', {
+      'KisiId': kisi,
+      'SinifSubeId': 1,
+      'EgitimOgretimYili': '2026/2027',
+      'DersId': 10,
+    });
+    expect((await s.projeDersleri(b, 1)).any((d) => d['DersId'] == 10), true);
+    final id = await projeFormu({1: 'Matematik', 2: 'Fizik', 10: 'Biyoloji'});
+    expect(
+      (await s.projeTalepleri(
+        b,
+        1,
+      )).singleWhere((p) => p['formId'] == id)['dersler'],
+      containsPair('10', 'Biyoloji'),
+    );
+  });
   test(
     'aynı ders reddedilir; eksik yanıt bekleyen sayılır, tekrar getirme sayıyı artırmaz',
     () async {
@@ -577,10 +725,30 @@ void main() {
       await bekle();
       expect(tester.takeException(), isNull);
       await capture('${width.toInt()}-2-sorular');
+      await tester.ensureVisible(find.text('Ders Ekle'));
+      await tester.tap(find.text('Ders Ekle'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, 'Kimya (elle)');
+      await tester.tap(find.text('Ekle'));
+      await tester.pumpAndSettle();
+      final eklenen = find.widgetWithText(CheckboxListTile, 'Kimya (elle)');
+      await tester.ensureVisible(eklenen);
+      await tester.pumpAndSettle();
+      expect(tester.widget<CheckboxListTile>(eklenen).value, true);
+      await tester.tap(eklenen);
+      await tester.pumpAndSettle();
+      expect(tester.widget<CheckboxListTile>(eklenen).value, false);
       await tester.tap(find.text('İleri'));
       await bekle();
       expect(tester.takeException(), isNull);
       await capture('${width.toInt()}-3-kontrol');
+      final dersAciliri = tester
+          .widgetList<DropdownButton<int>>(find.byType(DropdownButton<int>))
+          .skip(1);
+      expect(dersAciliri, hasLength(3));
+      for (final alan in dersAciliri) {
+        expect(alan.items, hasLength(3));
+      }
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
     }

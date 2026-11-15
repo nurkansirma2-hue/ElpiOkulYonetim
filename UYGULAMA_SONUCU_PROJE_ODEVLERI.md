@@ -9,7 +9,7 @@ Yerel çalışma klasörü: `ElpiOkulYonetim`.
 | Ekran | Gerçek bağlantı ve davranış |
 | --- | --- |
 | 1. Form talebi / Kapsam | Rehberlik Dosyam içinden Proje Ödevleri kartı; başlık, açıklama, atamanın sınıf/yıl bilgisi, ortak alıcı bileşeniyle öğrenci seçimi ve isteğe bağlı son gün. |
-| 2. Öğrenci ve dersler / Sorular | Seçili öğrenciler açılır bölümde; sınıfın güncel ders programındaki 3–6 ders seçilir. Sabit örnek öğrenci/ders sayısı yoktur. |
+| 2. Öğrenci ve dersler / Sorular | Seçili öğrenciler açılır bölümde; sınıfın güncel ders kayıtları, programı ve sınıfa bağlı ders öğretmenleri birlikte kullanılır. Kayıtlı bütün dersler başlangıçta seçilidir. Ders Ekle ile yalnız bu forma ders eklenebilir; kutusu kaldırılan ders formdan çıkarılır. Altı ders sınırı yoktur; öğrencinin üç farklı tercih yapabilmesi için en az üç ders seçilmelidir. Sabit örnek öğrenci/ders sayısı yoktur. |
 | 3. Google Form / Kontrol | Ortak BilgiToplama tabloları ve Forms adaptörü. Öğrenci kimliği sınıf, okul numarası ve ad soyad içeren kayıtlı açılır listeden eşleşir. Üç ders sorusu zorunlu açılır listedir; açıklama Google formuna da aktarılır. Ön izleme, sabit Geri/Hazırla alanı, yerel taslak tekrar koruması ve yarım kalan Google formunu bağlama desteği vardır. |
 | 4. Davet | Yayın ve yanıt kabulü Google'dan doğrulanır; kayıtlı kişi bağları ortak Mesajlaşma onayına taşınır. SMS/WhatsApp, telefon denetimi, tekrar numara birleştirme ve takip mevcut modülde kalır. Ekranın açılması gönderildi sayılmaz. |
 | 5. Yanıtlar | Özet, Yanıtlar ve Değerlendirme görünümleri; ortak yanıt getirme, gerçek tekil öğrenci sayaçları, form bilgileri ve eksiklere hatırlatma. Belirsiz/çoklu öğrenci yanıtı varsa otomatik hatırlatma durur. |
@@ -72,3 +72,9 @@ Kanıtlar yerelde saklandı; GitHub commitine dahil edilmedi: `test-artifacts/pr
 - `test/rehberlik_proje_odev_test.dart` — yeni iş akışı ve koruma testleri.
 
 Dosyaların tam hâlleri proje klasöründedir. Üretilen makineye özel Flutter dosyaları değişiklik kapsamından temizlendi. Yerel uygulama ve testlerin ardından kullanıcı **YAZ** onayı verdi. Yalnız bu rapor ve yukarıdaki yedi kod/test dosyası commit/push kapsamındadır. Manuel CI veya APK işlemi başlatılmadı.
+
+## Ders listesi düzeltmesi — sonraki yerel çalışma
+
+`965f8d3` sonrasında ders listesinin yalnız programdan gelmesi düzeltildi. `DersSinif`, geçerli program ve yetkili sınıf öğretmenlerinin ders bağları birleştirilir; diğer yıl ve ilgisiz dersler alınmaz. İlk altı dersi seçme kısıtı kaldırıldı. Elle eklenen ders form içinde saklanır; ana ders kataloğu ve sınıf programı değiştirilmez. Çıkarılan ders öğrenciye sunulan üç açılır listenin seçeneklerinden de çıkar.
+
+Son doğrulama: **16 test başarılı**, değişen üç Dart dosyasının analizi temiz. Ek testler sekiz sınıf dersinin gelmesini, başka ders öğretmeninin dersini, elle eklenen dersin kalıcılık/dağıtımını, tekrarlı veya ilgisiz derslerin reddini ve 320/400 px ekranda Ders Ekle ile seçimden çıkarmayı kapsar. Günlük: `test-artifacts/proje-ders-duzeltme-test.txt`. Kullanıcı bu düzeltme için de **YAZ** onayı verdi. Bu rapor, proje ekranı, proje servisi ve ilgili test dosyası commit/push kapsamındadır; test günlükleri ve ekran görüntüleri yerelde tutulur.

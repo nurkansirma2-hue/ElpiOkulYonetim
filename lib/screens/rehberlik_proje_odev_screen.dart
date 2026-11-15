@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../models/mesajlasma.dart';
+import '../models/ortak_import.dart';
 import '../services/bireysel_rehberlik_service.dart';
 import '../services/bireysel_bilgi_toplama_service.dart';
 import '../services/bilgi_toplama_google_service.dart';
@@ -207,9 +208,9 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     dersSecimi
       ..clear()
       ..addEntries(
-        dersler
-            .take(6)
-            .map((d) => MapEntry(d['DersId'] as int, d['DersAdi'] as String)),
+        dersler.map(
+          (d) => MapEntry(d['DersId'] as int, d['DersAdi'] as String),
+        ),
       );
     yerelForm = null;
     sonGun = null;
@@ -271,12 +272,95 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _dersEkle() async {
+    var girilen = '';
+    String? sorun;
+    final ad = await showDialog<String>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, set) => AlertDialog(
+          title: const Text('Ders Ekle'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                onChanged: (v) => girilen = v,
+                maxLength: 200,
+                decoration: InputDecoration(
+                  labelText: 'Ders adı',
+                  errorText: sorun,
+                ),
+              ),
+              const Text(
+                'Bu ders yalnız hazırladığınız proje formuna eklenir. Sınıfın ders programı değiştirilmez.',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: const Text('İptal'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = girilen.trim();
+                if (value.isEmpty) {
+                  set(() => sorun = 'Ders adını girin.');
+                  return;
+                }
+                final eslesen = dersler.where(
+                  (d) =>
+                      importNormalize(d['DersAdi'] as String) ==
+                      importNormalize(value),
+                );
+                if (eslesen.isNotEmpty) {
+                  final d = eslesen.first;
+                  if (dersSecimi.containsKey(d['DersId'])) {
+                    set(() => sorun = 'Bu ders zaten seçili.');
+                    return;
+                  }
+                  dersSecimi[d['DersId'] as int] = d['DersAdi'] as String;
+                  Navigator.pop(c);
+                  return;
+                }
+                if (dersSecimi.length >= 100) {
+                  set(() => sorun = 'Formun ders seçenekleri dolu.');
+                  return;
+                }
+                Navigator.pop(c, value);
+              },
+              child: const Text('Ekle'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      if (ad != null) {
+        final id =
+            dersler
+                .map((d) => d['DersId'] as int)
+                .fold<int>(0, (m, v) => v < m ? v : m) -
+            1;
+        dersler = [
+          ...dersler,
+          {'DersId': id, 'DersAdi': ad},
+        ];
+        dersSecimi[id] = ad;
+      }
+    });
+  }
+
   Future<void> _devam() async {
     if (adim == 0 && (baslik.text.trim().isEmpty || hedefler.isEmpty)) {
       throw StateError('Form başlığı ve hedef öğrenci seçin.');
     }
-    if (adim == 1 && (dersSecimi.length < 3 || dersSecimi.length > 6)) {
-      throw StateError('3–6 farklı ders seçin.');
+    if (adim == 1 && dersSecimi.length < 3) {
+      throw StateError(
+        'En az üç farklı ders seçin. Eksik dersleri Ders Ekle ile ekleyebilirsiniz.',
+      );
     }
     if (adim < 2) {
       adim++;
@@ -1033,6 +1117,14 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
           ],
         ),
         _kart('Seçilebilecek Dersler', Icons.layers_outlined, [
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: yerelForm != null ? null : _dersEkle,
+              icon: const Icon(Icons.add),
+              label: const Text('Ders Ekle'),
+            ),
+          ),
           for (final d in dersler)
             CheckboxListTile(
               dense: true,
@@ -1052,7 +1144,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             ),
         ]),
         _bilgi(
-          'Öğrenciler üç farklı dersi öncelik sırasına göre seçecektir. 3–6 ders seçin. Dersler sınıfın güncel programından gelir.',
+          'Sınıfın kayıtlı tüm dersleri listelenir. Kutusunu kaldırarak dersi formdan çıkarabilir, Ders Ekle ile eksik bir ders ekleyebilirsiniz. Öğrenciler seçili derslerden üç farklı tercih yapacaktır.',
         ),
       ],
       if (adim == 2)
