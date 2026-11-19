@@ -3021,6 +3021,853 @@ class _DetayState extends State<BireyselBilgiFormDetayScreen>
       );
     }
   });
+  /// Google Form düzenleyicisini açar, belirli yanıtı kendisi seçmez.
+  Future<void> _googleFormdaAc() => _is(() async {
+    final formId = _form?['GoogleFormId']?.toString() ?? '';
+    if (!RegExp(r'^[a-zA-Z0-9_-]{10,300}
+    final hedefKayitlari = await s.hedefOgrenciler(b, widget.formId);
+    final hedefler = hedefKayitlari.map((o) => o['OgrenciId'] as int).toSet();
+    final siniflar = hedefKayitlari.map((o) => o['SinifSubeId']).toSet();
+    final ms = MesajlasmaService.instance;
+    final mb = await ms.hazirla();
+    if (mb.okulId != b.okulId ||
+        mb.ogretmenId != b.profilId ||
+        mb.yil != b.yil) {
+      throw StateError('Alıcı kapsamı değişti.');
+    }
+    final adaylar = (await ms.aliciAdaylari(mb))
+        .where(
+          (k) => k.tur == MesajKisiTuru.ogretmen
+              ? siniflar.contains(k.sinifId)
+              : hedefler.contains(int.tryParse(k.kisiId)),
+        )
+        .toList();
+    if (!mounted || _gizli) return;
+    final onceki = await s.formAliciBaglari(b, widget.formId);
+    if (!mounted || _gizli) return;
+    final sonuc = await Navigator.of(context).push<Set<String>>(
+      MaterialPageRoute(
+        builder: (_) => _FormAliciSecScreen(adaylar: adaylar, onceki: onceki),
+      ),
+    );
+    if (sonuc != null) await s.formAlicilariniKaydet(b, widget.formId, sonuc);
+  }
+
+  Future<void> _durumIslemi(String islem) => _is(() async {
+    if (!await _onay(
+      context,
+      islem,
+      islem == 'Kapat'
+          ? 'Google Form yeni yanıt kabul etmeyecek. Mevcut yanıtlar korunacak.'
+          : '$islem işlemi uygulansın mı? Form ve yanıtlar silinmez.',
+    )) {
+      return;
+    }
+    if (!mounted || _gizli) return;
+    if (islem == 'Kapat' || islem == 'Aç') {
+      await _google.yanitAliminiAyarla(
+        s,
+        b,
+        widget.formId,
+        await _token(),
+        islem == 'Aç',
+      );
+    } else {
+      await s.isaretle(b, widget.formId, islem);
+    }
+    await _yerel();
+  });
+
+  Future<void> _hatirlat() async {
+    Set<int>? bekleyen;
+    await _is(() async {
+      await _google.yanitlariAl(s, b, widget.formId, await _token());
+      await _yerel();
+      if (_ozet['yanitlayan'] == null || _ozet['eslesmeyen'] != 0) {
+        throw StateError(
+          'Bazı yanıtların kişisi belirsiz. Yanlış kişiye hatırlatma göndermemek için önce yanıtları eşleştirin.',
+        );
+      }
+      bekleyen = (_ozet['beklenenIds'] as List).cast<int>().toSet().difference(
+        (_ozet['yanitlayanIds'] as List).cast<int>().toSet(),
+      );
+      if (bekleyen!.isEmpty) {
+        throw StateError('Yanıt beklenen öğrenci kalmadı.');
+      }
+    });
+    if (mounted && bekleyen != null && bekleyen!.isNotEmpty) {
+      await _paylas(yayinla: true, yalnizOgrenciler: bekleyen);
+    }
+  }
+
+  String _paylasimMesaji(String link) =>
+      'Merhaba, “${_form!['Baslik']}” formunu aşağıdaki bağlantıdan doldurmanızı rica ederiz.\n$link';
+
+  Future<void> _mesajMetniniYukle() => _is(() async {
+    final remote = await _google.kontrolEt(s, b, widget.formId, await _token());
+    final link = remote['responderUri']?.toString() ?? '';
+    final uri = Uri.tryParse(link);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host != 'docs.google.com' ||
+        !uri.path.startsWith('/forms/')) {
+      throw StateError('Formun yanıtlama bağlantısı henüz alınamadı.');
+    }
+    if (mounted) setState(() => _formMesaji = _paylasimMesaji(link));
+  });
+
+  Widget _mesajMetniKutusu() => Card(
+    child: OrtakGenisleyenBolum(
+      key: const PageStorageKey('form-mesaj-metni'),
+      initiallyExpanded: false,
+      leading: const Icon(Icons.message_outlined),
+      title: const Text('Mesaj metni'),
+      onExpansionChanged: (acik) {
+        if (!acik) return;
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted ||
+              _busy ||
+              _formMesaji != null ||
+              _form?['GoogleFormId'] == null) {
+            return;
+          }
+
+          _mesajMetniniYukle();
+        });
+      },
+      childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Builder(builder: (context) {
+            final mesaj = _formMesaji;
+            if (mesaj == null) {
+              return SelectableText(
+                _busy ? 'Mesaj yükleniyor…' : 'Form bağlantısı henüz hazırlanmadı.');
+            }
+            final eslesme = RegExp(r'https://[^\s]+').firstMatch(mesaj);
+            if (eslesme == null) return SelectableText(mesaj);
+            final baglanti = eslesme.group(0)!;
+            final uri = Uri.tryParse(baglanti);
+            final guvenli = uri != null &&
+                uri.scheme == 'https' &&
+                uri.host == 'docs.google.com' &&
+                uri.path.startsWith('/forms/');
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(mesaj.substring(0, eslesme.start)),
+                if (guvenli)
+                  InkWell(
+                    onTap: () async {
+                      try {
+                        if (!await launchUrl(uri!, mode: LaunchMode.externalApplication)) {
+                          throw StateError('Form bağlantısı açılamadı.');
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Form açılamadı. Orijinal hata: $e')));
+                        }
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Text(
+                        baglanti,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          decoration: TextDecoration.underline),
+                      ),
+                    ),
+                  )
+                else SelectableText(baglanti),
+                if (eslesme.end < mesaj.length)
+                  SelectableText(mesaj.substring(eslesme.end)),
+              ],
+            );
+          }),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: _formMesaji == null
+                ? null
+                : () async {
+                    await Clipboard.setData(ClipboardData(text: _formMesaji!));
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Mesaj metni kopyalandı.'),
+                        ),
+                      );
+                    }
+                  },
+            icon: const Icon(Icons.copy_outlined),
+            label: const Text('Metni kopyala'),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _yonetimOzeti() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${bilgiFormSablonlari[_ozet['sablon']] ?? 'Bilgi formu'} • ${_form?['Durum'] == 'Aktif' && _ozet['durum'] == 'Taslak' ? 'Google Form hazır, yayımlanmayı bekliyor' : _ozet['durum']}',
+              ),
+              Text('Yanıtlayacak grup: ${_ozet['aliciGrubu']}'),
+              Text(
+                _ozet['yanitlayan'] == null
+                    ? '${_ozet['yanitSayisi']} yanıt • Kişi eşleştirmesi belirsiz'
+                    : '${_ozet['yanitlayan']} / ${_ozet['beklenen']} öğrenci için yanıt eşleşti',
+              ),
+              Text(
+                'Yanıt alımı: ${_ozet['yayinAcik'] == true
+                    ? 'Açık'
+                    : _ozet['yayinAcik'] == false
+                    ? 'Kapalı'
+                    : 'Henüz doğrulanmadı'}',
+              ),
+              Text(
+                'Paylaşım: ${_ozet['paylasimBaslatildi'] == true ? 'Başlatıldı; gönderim onayı Mesajlaşma’da' : 'Uygulamada paylaşım kaydı yok'}',
+              ),
+              if (_ozet['sonYanit'] != null)
+                Text(
+                  'Son yanıt: ${DateTime.parse(_ozet['sonYanit'] as String).toLocal()}',
+                ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  );
+
+  Widget _sayisalDegerlendirme() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      for (final e in _sayilar.entries)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(e.key, style: Theme.of(context).textTheme.titleMedium),
+                if (e.value.isEmpty) const Text('Henüz yanıt yok.'),
+                for (final v in e.value.entries)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${v.key}: ${v.value}'),
+                        LinearProgressIndicator(
+                          value:
+                              v.value /
+                              e.value.values.fold<int>(0, (a, b) => a + b),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+    ],
+  );
+
+  Widget _formIslemCubugu() {
+    final taslak = _form!['Durum'] == 'Taslak';
+    final aktif = _form!['Durum'] == 'Aktif';
+    final kapali = _form!['Durum'] == 'Kapali';
+    Widget eylem(
+      IconData icon,
+      String label,
+      String hint,
+      VoidCallback? action,
+    ) => Expanded(
+      child: Tooltip(
+        message: hint,
+        child: TextButton(
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            minimumSize: const Size(0, 56),
+          ),
+          onPressed: _busy ? null : action,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 22),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (taslak || aktif)
+          _FormAnaIslem(
+            metin: taslak ? 'Google Formu Hazırla' : 'Ön İzle ve Onayla',
+            ipucu:
+                'Seçili alıcılarla mesaj ön izlemesini açar. Gönderim sizin onayınızla yapılır.',
+            busy: _busy,
+            icon: taslak ? Icons.description_outlined : Icons.preview_outlined,
+            onPressed: () => taslak ? _hazirla() : _paylas(yayinla: true),
+          ),
+        Row(
+          children: [
+            eylem(
+              Icons.people_outline,
+              'Alıcılar',
+              'Alıcıları düzenle',
+              () => _is(_alicilariDuzenle),
+            ),
+            eylem(
+              kapali ? Icons.play_circle_outline : Icons.pause_circle_outline,
+              kapali ? 'Yanıt aç' : 'Yanıt kapat',
+              kapali ? 'Yanıt alımını aç' : 'Yanıt alımını kapat',
+              aktif || kapali
+                  ? () => _durumIslemi(kapali ? 'Aç' : 'Kapat')
+                  : null,
+            ),
+            eylem(
+              Icons.notifications_active_outlined,
+              'Hatırlat',
+              'Yanıt vermeyenlere hatırlat',
+              aktif ? _hatirlat : null,
+            ),
+            Expanded(
+              child: PopupMenuButton<String>(
+                tooltip: 'Diğer işlemler',
+                enabled: !_busy,
+                onSelected: (v) {
+                  if (v == 'hesap') {
+                    _hesapDegistir();
+                  } else {
+                    _durumIslemi(v);
+                  }
+                },
+                itemBuilder: (_) => [
+                  if (_email != null)
+                    const PopupMenuItem(
+                      value: 'hesap',
+                      child: Text('Hesabı değiştir'),
+                    ),
+                  if (kapali)
+                    const PopupMenuItem(
+                      value: 'Tamamla',
+                      child: Text('Tamamlandı olarak işaretle'),
+                    ),
+                  if (kapali)
+                    PopupMenuItem(
+                      value: _ozet['arsiv'] == true
+                          ? 'Arşivden çıkar'
+                          : 'Arşivle',
+                      child: Text(
+                        _ozet['arsiv'] == true ? 'Arşivden çıkar' : 'Arşivle',
+                      ),
+                    ),
+                ],
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.more_vert, size: 22),
+                      SizedBox(height: 4),
+                      Text('Diğer', style: TextStyle(fontSize: 11)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _btn(String text, VoidCallback f) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: OutlinedButton(onPressed: _busy ? null : f, child: Text(text)),
+  );
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_busy,
+    child: OrtakSayfa(
+      appBar: ModulUstBar(
+        title: Text(_form?['Baslik']?.toString() ?? 'Bilgi formu'),
+      ),
+      bottomNavigationBar: _form == null || _gizli ? null : _formIslemCubugu(),
+      body: _gizli
+          ? const Center(child: Text('Bilgiler gizlendi.'))
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (_busy) const LinearProgressIndicator(),
+                if (_hata != null)
+                  SelectableText(
+                    _hata!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                if (_hata != null) _btn('Yeniden dene', () => _is(_yerel)),
+                if (_sonuc != null)
+                  Text(
+                    _sonuc!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                if (_form == null && !_busy)
+                  _btn('Yeniden dene', () => _is(_yerel)),
+                if (_form != null)
+                  TabBar(
+                    isScrollable: true,
+                    controller: _tablar,
+                    onTap: (i) => setState(() {
+                      _sekme = i;
+                      if (i != 2) _p = null;
+                    }),
+                    tabs: const [
+                      Tab(text: 'Özet'),
+                      Tab(text: 'Yanıtlar'),
+                      Tab(text: 'Değerlendirme'),
+                    ],
+                  ),
+                if (_sekme == 0 && _form != null) ...[
+                  _yonetimOzeti(),
+                  _mesajMetniKutusu(),
+                ],
+                if (_sekme == 2 && _p != null) _onizleme(),
+                if (_sekme == 2 && _p == null) _sayisalDegerlendirme(),
+                if (_form != null && _p == null) ...[
+                  if (_sekme == 0) ...[
+                    const Text(
+                      '1. Formu hazırla ve paylaş',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (_email != null) Text(_email!),
+                    if (_email == null)
+                      _btn(
+                        'Google hesabını bağla',
+                        () => _is(() async {
+                          await _token();
+                        }),
+                      ),
+                    if (_form!['Durum'] == 'Taslak') ...[
+                      if (_form!['GoogleFormId'] == null)
+                        OrtakGenisleyenBolum(
+                          title: const Text('Yarım kalan Google formunu bağla'),
+                          children: [
+                            const Text(
+                              'Google Forms düzenleme adresindeki /d/ ile /edit arasındaki kimliği girin. Farklı sorular içeren formlar bağlanmaz.',
+                            ),
+                            TextField(
+                              controller: _kurtar,
+                              decoration: const InputDecoration(
+                                labelText: 'Google form kimliği',
+                              ),
+                            ),
+                            _btn(
+                              'Mevcut formu bağla',
+                              () => _hazirla(kurtar: true),
+                            ),
+                            _btn(
+                              'Form oluşmadığını kontrol ettim',
+                              () => _is(() async {
+                                if (!await _onay(
+                                  context,
+                                  'Yeniden oluşturma izni',
+                                  'Google Forms hesabınızda bu formun oluşmadığını kontrol ettiniz mi? Bu işlem yalnız yeniden deneme kilidini kaldırır.',
+                                )) {
+                                  return;
+                                }
+                                await s.googleTekrarDenemeyeIzinVer(
+                                  b,
+                                  widget.formId,
+                                );
+                                if (mounted) {
+                                  setState(
+                                    () => _sonuc =
+                                        'Yeniden hazırlama izni verildi.',
+                                  );
+                                }
+                              }),
+                            ),
+                          ],
+                        ),
+                    ] else ...[
+                      if (_paylasildi) ...[
+                        _btn('Formu aç', () => _paylas(ac: true)),
+                        _btn('Yanıtları getir', _al),
+                      ],
+                    ],
+                  ],
+                  const SizedBox(height: 16),
+                  if (_sekme != 0) _topluListe(),
+                ],
+              ],
+            ),
+    ),
+  );
+  Widget _onizleme() {
+    final p = _p!, o = p.ogrenci;
+    final kapali = _yanitlar.any(
+      (y) =>
+          y['Id'] == p.yanitId &&
+          (y['Durum'] == 'Onaylandi' || y['Durum'] == 'Reddedildi'),
+    );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              '3. Kontrol et ve kaydet',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            Text(
+              'Formda: ${p.girilen['okulNo']} • ${p.girilen['adSoyad']} • ${p.girilen['sinif']}',
+            ),
+            Text(
+              o == null
+                  ? 'Eşleşen öğrenci yok.'
+                  : 'Kayıtta: ${o['OkulNo']} • ${o['Ad']} ${o['Soyad']} • ${o['SinifKodu']}',
+            ),
+            const Text('Ad soyad ve sınıf öğrenci kaydına yazılmaz.'),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: FilledButton.icon(
+                onPressed: _busy ? null : _yanitDuzenle,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Yanıtları Düzenle'),
+              ),
+            ),
+            for (final e in p.hatalar)
+              Text(
+                e,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            for (final e in p.uyarilar)
+              Text(
+                e,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            for (final e in p.degisiklikler.entries)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  _alanlar[e.key] ??
+                      BireyselBilgiToplamaService.veliAlanBasliklari[e.key] ??
+                      e.key,
+                ),
+                subtitle: Text(
+                  'Eski: ${_onizlemeMetni(e.key, e.value['eski'])}\nYeni: ${_onizlemeMetni(e.key, e.value['yeni'])}',
+                ),
+              ),
+            for (final e in p.serbestDegerler.entries)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  _sorular.firstWhere((q) => q['Id'] == e.key)['Baslik']
+                      as String,
+                ),
+                subtitle: Text(
+                  'Eski: ${p.serbestOncekiDegerler[e.key] ?? '—'}\nYeni: ${e.value}',
+                ),
+              ),
+            if (!kapali) _btn('Doğru öğrenciyi seç', _duzelt),
+            if (_form?['Durum'] == 'Aktif' && o != null)
+              _btn('Öğrenciye düzeltme bağlantısı gönder', _ogrenciyeDuzelttir),
+            FilledButton(
+              onPressed: _busy || !p.kaydedilebilir ? null : _kaydet,
+              child: const Text('Onayla ve kaydet'),
+            ),
+            if (!kapali) _btn('Yanıtı reddet', _reddet),
+            _btn('Google Forms ve uygulamadan sil', _sil),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'Yanıt kimliği eşleşmiyorsa: Google Form’da Yanıtlar > '
+                'Bireysel bölümünden doğru yanıtı bulup silin. '
+                'Form bağlantısı seçili yanıtı otomatik açmaz. '
+                'Sonra uygulamada silinmeyi doğrulayın.',
+              ),
+            ),
+            _btn('Google Form’da Aç (manuel silme)', _googleFormdaAc),
+            _btn('Google’da Silinmeyi Doğrula', _manuelSilinmeyiDogrula),
+            _btn('Ön izlemeyi kapat', () => setState(() => _p = null)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _YanitDuzenleScreen extends StatefulWidget {
+  const _YanitDuzenleScreen({
+    required this.sorular,
+    required this.cevaplar,
+    required this.kaydet,
+  });
+  final List<Map<String, Object?>> sorular;
+  final Map<String, String> cevaplar;
+  final Future<int> Function(Map<String, String>) kaydet;
+  @override
+  State<_YanitDuzenleScreen> createState() => _YanitDuzenleState();
+}
+
+class _YanitDuzenleState extends State<_YanitDuzenleScreen>
+    with WidgetsBindingObserver {
+  late final _controllers = {
+    for (final q in widget.sorular)
+      q['AlanAnahtari'] as String: TextEditingController(
+        text: widget.cevaplar[q['AlanAnahtari']] ?? '',
+      ),
+  };
+  bool _busy = false, _gizli = false;
+  String? _hata;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (mounted) setState(() => _gizli = state != AppLifecycleState.resumed);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _kaydet() async {
+    setState(() {
+      _busy = true;
+      _hata = null;
+    });
+    try {
+      final id = await widget.kaydet({
+        for (final e in _controllers.entries) e.key: e.value.text,
+      });
+      if (mounted) Navigator.pop(context, id);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _hata = 'Düzeltme kaydedilemedi. Orijinal hata: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Widget _alan(Map<String, Object?> q) {
+    final c = _controllers[q['AlanAnahtari']]!;
+    final tur = q['VeriTuru'];
+    final secenekler = tur == 'EvetHayir'
+        ? ['Evet', 'Hayır']
+        : tur == 'Secenek'
+        ? (jsonDecode(q['Secenekler'] as String) as List)
+              .map((v) => v is Map ? v['etiket'] as String : v as String)
+              .toList()
+        : <String>[];
+    final label = '${q['Baslik']}${q['Zorunlu'] == 1 ? ' *' : ''}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: secenekler.isNotEmpty
+          ? DropdownButtonFormField<String>(
+              initialValue: c.text,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: label,
+                border: const OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('Yanıt yok')),
+                for (final v in {...secenekler, if (c.text.isNotEmpty) c.text})
+                  DropdownMenuItem(value: v, child: Text(v)),
+              ],
+              onChanged: _busy ? null : (v) => c.text = v ?? '',
+            )
+          : TextField(
+              controller: c,
+              enabled: !_busy,
+              minLines: 1,
+              maxLines: tur == 'Metin' ? 4 : 1,
+              keyboardType: tur == 'Telefon'
+                  ? TextInputType.phone
+                  : tur == 'Sayi'
+                  ? const TextInputType.numberWithOptions(
+                      signed: true,
+                      decimal: true,
+                    )
+                  : TextInputType.text,
+              decoration: InputDecoration(
+                labelText: label,
+                helperText: tur == 'Tarih' ? 'YYYY-AA-GG' : null,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_busy,
+    child: OrtakSayfa(
+      appBar: const ModulUstBar(title: Text('Yanıtları düzenle')),
+      body: _gizli
+          ? const Center(child: Text('Bilgiler gizlendi.'))
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                const Text(
+                  'Düzeltmeler uygulamada yeni bir kontrol kaydı olarak saklanır. Google yanıtı korunur. Öğrenci bilgileri ayrıca onayladığınızda güncellenir. Boş cevaplar mevcut bilgileri silmez.',
+                ),
+                if (_hata != null)
+                  Text(
+                    _hata!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                for (final q in widget.sorular) _alan(q),
+                FilledButton(
+                  onPressed: _busy ? null : _kaydet,
+                  child: const Text('Düzeltmeleri ön izle'),
+                ),
+                TextButton(
+                  onPressed: _busy ? null : () => Navigator.pop(context),
+                  child: const Text('İptal'),
+                ),
+              ],
+            ),
+    ),
+  );
+}
+
+class _FormAliciSecScreen extends StatefulWidget {
+  const _FormAliciSecScreen({required this.adaylar, required this.onceki});
+  final List<MesajKisi> adaylar;
+  final Set<String> onceki;
+  @override
+  State<_FormAliciSecScreen> createState() => _FormAliciSecState();
+}
+
+class _FormAliciSecState extends State<_FormAliciSecScreen> {
+  late final _secilen = {
+    for (final k in widget.adaylar.where(
+      (k) => widget.onceki.contains(k.bagAnahtari),
+    ))
+      k.secimAnahtari: k,
+  };
+  @override
+  Widget build(BuildContext context) => OrtakSayfa(
+    appBar: const ModulUstBar(title: Text('Form alıcıları')),
+    body: CustomScrollView(
+      slivers: [
+        MesajAliciSecimSliver(
+          adaylar: widget.adaylar,
+          siniflar: {
+            for (final k in widget.adaylar)
+              k.sinifId: k.aciklama.split(' • ').first,
+          },
+          secilenler: _secilen,
+          degistir: (k) => setState(() {
+            _secilen.clear();
+            _secilen.addEntries(k.map((v) => MapEntry(v.secimAnahtari, v)));
+          }),
+          veliDuzenle: (_) async {},
+          ogretmenDuzenle: (_, __) async {},
+          kisiDuzenle: (_) async {},
+          iletisimDuzenleme: false,
+        ),
+      ],
+    ),
+    bottomNavigationBar: Padding(
+      padding: const EdgeInsets.all(12),
+      child: FilledButton(
+        onPressed: _secilen.isEmpty
+            ? null
+            : () => Navigator.pop(
+                context,
+                _secilen.values.map((k) => k.bagAnahtari).toSet(),
+              ),
+        child: Text('Seçimi kaydet (${_secilen.length})'),
+      ),
+    ),
+  );
+}
+).hasMatch(formId)) {
+      throw StateError('Google Form kimliği eksik veya geçersiz.');
+    }
+    final uri = Uri.https('docs.google.com', '/forms/d/$formId/edit');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      throw StateError('Google Form düzenleme ekranı açılamadı.');
+    }
+  });
+
+  Future<void> _manuelSilinmeyiDogrula() => _is(() async {
+    final p = _p!;
+    if (!await _onay(
+      context,
+      'Google’da silinmeyi doğrula',
+      'Google Forms > Yanıtlar > Bireysel bölümünde doğru yanıtı kendiniz '
+          'sildiyseniz devam edin. Uygulama yalnız seçili yanıtın Google’da '
+          'bulunmadığını kontrol edecek. Yanıt mevcutsa veya erişim '
+          'doğrulanamazsa yerel kayıt korunacak. Önceden onaylanan '
+          'öğrenci bilgileri etkilenmeyecek.',
+    )) {
+      return;
+    }
+    if (!mounted || _gizli || !identical(_p, p)) return;
+    final token = await _token(silme: true);
+    if (!mounted || _gizli || !identical(_p, p)) return;
+    await _google.manuelSilinmeyiDogrula(s, b, p, token);
+    _p = null;
+    await _yerel();
+    if (mounted) {
+      setState(() => _sonuc =
+          'Google Forms’ta silindiği doğrulandı; '
+          'yalnızca seçilen yanıtın yerel ham verileri temizlendi.');
+    }
+  });
+
   Future<void> _alicilariDuzenle() async {
     final hedefKayitlari = await s.hedefOgrenciler(b, widget.formId);
     final hedefler = hedefKayitlari.map((o) => o['OgrenciId'] as int).toSet();

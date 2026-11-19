@@ -112,6 +112,67 @@ void main() {
     client.close();
   });
 
+  for (final status in [200, 403, 404]) {
+    test('manuel silme doğrulaması yanıt durumu $status', () async {
+      final client = MockClient((r) async {
+        if (r.url.path.endsWith('/responses/r1')) {
+          return http.Response('{}', status);
+        }
+        if (r.url.path.endsWith('/responses')) {
+          return http.Response(jsonEncode({'responses': []}), 200);
+        }
+        return http.Response(jsonEncode({'formId': 'f1'}), 200);
+      });
+      final future = BilgiToplamaGoogleService(client: client)
+          .googleSilinmesiniDogrula('token', 'f1', 'r1');
+      if (status == 404) {
+        await future;
+      } else {
+        await expectLater(future, throwsStateError);
+      }
+      client.close();
+    });
+  }
+
+  test('404 olsa da yanıt tam listede bulunuyorsa korur', () async {
+    final client = MockClient((r) async {
+      if (r.url.path.endsWith('/responses/r1')) {
+        return http.Response('{}', 404);
+      }
+      if (r.url.path.endsWith('/responses')) {
+        return http.Response(jsonEncode({
+          'responses': [{'responseId': 'r1'}],
+        }), 200);
+      }
+      return http.Response(jsonEncode({'formId': 'f1'}), 200);
+    });
+    await expectLater(
+      BilgiToplamaGoogleService(client: client)
+          .googleSilinmesiniDogrula('token', 'f1', 'r1'),
+      throwsStateError,
+    );
+    client.close();
+  });
+
+  test('form izni veya liste erişimi yoksa 404 başarı sayılmaz', () async {
+    for (final denied in ['form', 'list']) {
+      final client = MockClient((r) async {
+        if (denied == 'form') return http.Response('{}', 403);
+        if (r.url.path.endsWith('/responses/r1')) {
+          return http.Response('{}', 404);
+        }
+        if (r.url.path.endsWith('/responses')) return http.Response('{}', 403);
+        return http.Response(jsonEncode({'formId': 'f1'}), 200);
+      });
+      await expectLater(
+        BilgiToplamaGoogleService(client: client)
+            .googleSilinmesiniDogrula('token', 'f1', 'r1'),
+        throwsStateError,
+      );
+      client.close();
+    }
+  });
+
   test('erişilemeyen formun 404 sonucu yanıt yokluğu sayılmaz', () async {
     var responseChecks = 0;
     final client = MockClient((r) async {

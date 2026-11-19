@@ -595,6 +595,63 @@ class BilgiToplamaGoogleService {
     );
   }
 
+  /// Kullanıcının Google Forms arayüzünde yaptığı silmeyi bağımsız olarak
+  /// doğrular. Google'a silme çağrısı göndermez; Apps Script gerekmez.
+  Future<void> manuelSilinmeyiDogrula(
+    BireyselBilgiToplamaService yerel,
+    BilgiToplamaOturumu b,
+    BilgiToplamaOnizleme p,
+    String token,
+  ) => yerel.yanitiGoogleIleSil(
+    b,
+    p,
+    googleSil: (formId, responseId) =>
+        googleSilinmesiniDogrula(token, formId, responseId),
+  );
+
+  /// Formun varlığı, kesin yanıtın HTTP 404 durumu ve eksiksiz cevap
+  /// listesindeki yokluğu birlikte doğrulanmadan yerel temizlik yapılamaz.
+  Future<void> googleSilinmesiniDogrula(
+    String token,
+    String formId,
+    String responseId,
+  ) async {
+    final headers = {..._headers(token), 'Cache-Control': 'no-cache'};
+    final form = await durum(token, formId);
+    if (form['formId'] != formId) {
+      throw StateError('Google form kimliği uyuşmuyor. Yerel kayıt korundu.');
+    }
+    final yanit = await _client
+        .get(
+          Uri.parse(
+            '$_kok/${Uri.encodeComponent(formId)}/responses/${Uri.encodeComponent(responseId)}',
+          ),
+          headers: headers,
+        )
+        .timeout(const Duration(seconds: 30));
+    if (yanit.statusCode == 200) {
+      throw StateError(
+        'Yanıt Google Forms üzerinde hâlâ mevcut. '
+        'Yalnızca doğru yanıtı Google Forms üzerinden sildikten sonra doğrulayın.',
+      );
+    }
+    if (yanit.statusCode != 404) {
+      throw StateError(
+        'Google yanıtı doğrulanamadı (HTTP ${yanit.statusCode}). Yerel kayıt korundu.',
+      );
+    }
+    final liste = await RehberlikGoogleFormService(client: _client)
+        .yanitlariGetir(
+          erisimBelirteci: token,
+          googleFormId: formId,
+        );
+    if (liste.any((yanit) => yanit['responseId'] == responseId)) {
+      throw StateError(
+        'Yanıt Google Forms listesinde hâlâ mevcut. Yerel kayıt korundu.',
+      );
+    }
+  }
+
   Future<BilgiToplamaTopluSilmeSonucu> yanitlariTopluSil(
     BireyselBilgiToplamaService yerel,
     BilgiToplamaOturumu b,
