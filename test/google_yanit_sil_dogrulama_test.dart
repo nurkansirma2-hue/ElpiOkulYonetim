@@ -13,8 +13,25 @@ void main() {
         final client = MockClient((r) async {
           if (r.url.host == 'script.googleapis.com') {
             final body = jsonDecode(r.body);
-            expect(body['parameters'], ['f1', 'r1']);
             expect(body['devMode'], false);
+            if (body['function'] == 'okulYanitSilKurulumKontrol') {
+              expect(body['parameters'], isEmpty);
+              return http.Response(
+                jsonEncode({
+                  'done': true,
+                  'response': {
+                    'result': {
+                      'protocol': 'okul-yanit-sil/v1',
+                      'ready': true,
+                      'implementation': 'exact-response-2026-11-19',
+                    },
+                  },
+                }),
+                200,
+              );
+            }
+            expect(body['function'], 'okulYanitSil');
+            expect(body['parameters'], ['f1', 'r1']);
             return http.Response(
               jsonEncode({
                 'done': true,
@@ -48,6 +65,22 @@ void main() {
     var responseChecks = 0;
     final client = MockClient((r) async {
       if (r.url.host == 'script.googleapis.com') {
+        final body = jsonDecode(r.body);
+        if (body['function'] == 'okulYanitSilKurulumKontrol') {
+          return http.Response(
+            jsonEncode({
+              'done': true,
+              'response': {
+                'result': {
+                  'protocol': 'okul-yanit-sil/v1',
+                  'ready': true,
+                  'implementation': 'exact-response-2026-11-19',
+                },
+              },
+            }),
+            200,
+          );
+        }
         return http.Response(
           jsonEncode({
             'error': {'code': 3},
@@ -65,6 +98,41 @@ void main() {
       throwsStateError,
     );
     expect(responseChecks, 0);
+    client.close();
+  });
+  test('eski dağıtımda silme çağrısı yapılmaz ve yanıt korunur', () async {
+    var deleteCalls = 0;
+    final client = MockClient((request) async {
+      if (request.url.host == 'script.googleapis.com') {
+        final body = jsonDecode(request.body);
+        if (body['function'] == 'okulYanitSil') deleteCalls++;
+        return http.Response(
+          jsonEncode({
+            'done': true,
+            'response': {
+              'result': {
+                'protocol': 'okul-yanit-sil/v1',
+                'ready': true,
+                'implementation': 'old-deployment',
+              },
+            },
+          }),
+          200,
+        );
+      }
+      fail('Eski dağıtımda Forms API çağrısı beklenmiyor');
+    });
+    await expectLater(
+      BilgiToplamaGoogleService(
+        client: client,
+      ).googleYanitSil('deployment', 'token', 'f1', 'r1'),
+      throwsA(isA<StateError>().having(
+        (e) => e.message.toString(),
+        'mesaj',
+        contains('yayımlanmış sürümü güncel değil'),
+      )),
+    );
+    expect(deleteCalls, 0);
     client.close();
   });
 }

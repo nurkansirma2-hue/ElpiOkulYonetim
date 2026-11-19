@@ -760,6 +760,35 @@ class BilgiToplamaGoogleService {
     String responseId,
   ) async {
     final headers = _headers(token);
+    // devMode:false yayımlanmış sürümü çalıştırır; editördeki kodu değil.
+    // Eski dağıtımla gerçek Google yanıtı silinmeye çalışılmaz.
+    final kurulum = _oku(
+      await _client
+          .post(
+            Uri.https('script.googleapis.com', '/v1/scripts/$deploymentId:run'),
+            headers: headers,
+            body: jsonEncode({
+              'function': 'okulYanitSilKurulumKontrol',
+              'parameters': [],
+              'devMode': false,
+            }),
+          )
+          .timeout(const Duration(seconds: 60)),
+    );
+    final kurulumYanit = kurulum['response'];
+    final kurulumSonuc = kurulumYanit is Map ? kurulumYanit['result'] : null;
+    if (kurulum['error'] != null ||
+        kurulum['done'] != true ||
+        kurulumSonuc is! Map ||
+        kurulumSonuc['protocol'] != 'okul-yanit-sil/v1' ||
+        kurulumSonuc['ready'] != true ||
+        kurulumSonuc['implementation'] != 'exact-response-2026-11-19') {
+      throw StateError(
+        'Google yanıt silme betiğinin yayımlanmış sürümü güncel değil veya doğrulanamadı. '
+        'Apps Script > Dağıt > Dağıtımları yönet bölümünden mevcut API dağıtımını '
+        'Code.gs dosyasının güncel sürümüne yükseltin. Yerel yanıt korundu.',
+      );
+    }
     final data = _oku(
       await _client
           .post(
