@@ -13,7 +13,7 @@ void main() {
   setUp(() async {
     databaseFactory = WindowsMemoryFactory();
     db = await LocalDatabase.instance.database;
-    SharedPreferences.setMockInitialValues({'calisma_modu': 'bireysel'});
+    SharedPreferences.setMockInitialValues({'calisma_modu': 'bireysel', 'ana_sayfa_kompakt': false});
     await db.insert('OgretmenProfil', {
       'OgretmenProfilId': 1,
       'AdSoyad': 'Örnek Öğretmen',
@@ -58,6 +58,34 @@ void main() {
     await tester.ensureVisible(f);
     await tester.pump();
   }
+
+  testWidgets('Kayıtsız açılış kompakt listedir; kart seçimi kaydedilip yeniden yüklenir', (tester) async {
+    SharedPreferences.setMockInitialValues({'calisma_modu': 'bireysel'});
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(uygulama(const BireyselAnaSayfaScreen()));
+    await tester.pumpAndSettle();
+    await menuyaGit(tester);
+    expect(tester.widget<AnaMenuYerlesimi>(find.byType(AnaMenuYerlesimi)).kompakt, isTrue);
+    final ogrenci = find.byKey(const ValueKey('modul-Öğrenci İşlemleri'));
+    final odev = find.byKey(const ValueKey('modul-Ödev Kontrol'));
+    expect(tester.getTopLeft(ogrenci).dx, tester.getTopLeft(odev).dx);
+    expect(tester.getTopLeft(odev).dy, greaterThan(tester.getBottomLeft(ogrenci).dy));
+    await ayardanDegistir(tester);
+    expect(tester.widget<AnaMenuYerlesimi>(find.byType(AnaMenuYerlesimi)).kompakt, isFalse);
+    expect((await SharedPreferences.getInstance()).getBool('ana_sayfa_kompakt'), false);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(uygulama(const BireyselAnaSayfaScreen()));
+    await tester.pumpAndSettle();
+    await menuyaGit(tester);
+    expect(tester.widget<AnaMenuYerlesimi>(find.byType(AnaMenuYerlesimi)).kompakt, isFalse);
+    await ayardanDegistir(tester);
+    expect(tester.widget<AnaMenuYerlesimi>(find.byType(AnaMenuYerlesimi)).kompakt, isTrue);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   for (final adim in [1, 2]) {
     for (final genislik in [320.0, 430.0]) {

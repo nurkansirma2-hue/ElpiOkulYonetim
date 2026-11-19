@@ -1224,23 +1224,17 @@ class _BireyselAnaSayfaScreenState extends State<BireyselAnaSayfaScreen>
             const SizedBox(width: 8),
             const Expanded(child: Text('Hızlı Erişim',
               style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-            Icon(Icons.grid_view, size: 18,
+            Icon(kompaktGorunum ? Icons.view_list_outlined : Icons.grid_view, size: 18,
               color: Theme.of(context).colorScheme.onPrimary),
           ]),
         ),
         const SizedBox(height: 6),
-        LayoutBuilder(builder: (context, constraints) {
-          final kolon = constraints.maxWidth >= 340 ? 4 :
-              constraints.maxWidth >= 270 ? 3 : 2;
-          const bosluk = 6.0;
-          final genislik = (constraints.maxWidth - bosluk * (kolon - 1)) / kolon;
-          return AnaMenuStili(
-            kompakt: false, yatay: true, kutucuk: true, dar: true,
-            child: Wrap(spacing: bosluk, runSpacing: bosluk,
-              children: [for (final item in ana)
-                SizedBox(width: genislik, child: item)]),
-          );
-        }),
+        AnaMenuYerlesimi(
+          kompakt: kompaktGorunum,
+          yatay: true,
+          kutucuk: !kompaktGorunum,
+          children: ana,
+        ),
       ]),
     );
   }

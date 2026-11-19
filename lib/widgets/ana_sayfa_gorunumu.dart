@@ -57,7 +57,7 @@ class OrtakGorunumTercihi extends ChangeNotifier {
 
   static final instance = OrtakGorunumTercihi._();
   static const _anahtar = 'ana_sayfa_kompakt';
-  bool _kompakt = false;
+  bool _kompakt = true;
   bool get kompakt => _kompakt;
   AnaSayfaTemasi tema = AnaSayfaTemasi.mavi;
   ThemeMode ekranModu = ThemeMode.light;
@@ -85,7 +85,7 @@ class OrtakGorunumTercihi extends ChangeNotifier {
 
   Future<void> yukle() => _sirali(() async {
     final prefs = await SharedPreferences.getInstance();
-    _guncelle(prefs.getBool(_anahtar) ?? false);
+    _guncelle(prefs.getBool(_anahtar) ?? true);
     temaUygula(
       AnaSayfaTemasi.values.firstWhere(
         (t) => t.name == prefs.getString('ana_sayfa_tema'),

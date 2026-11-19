@@ -44,7 +44,7 @@ void main() {
   testWidgets('Ayar değişikliği açık iki ekranı yeniden kurmadan yeniler', (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({'ana_sayfa_kompakt': false});
     await tester.pumpWidget(
       const MaterialApp(
         home: Row(
@@ -102,14 +102,14 @@ void main() {
       expect(tercih.kompakt, isTrue);
       SharedPreferences.setMockInitialValues({});
       await tercih.yukle();
-      expect(tercih.kompakt, isFalse);
+      expect(tercih.kompakt, isTrue);
     },
   );
 
   testWidgets('Görünüm ve daraltma tercihi yeniden açılınca korunur', (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({'ana_sayfa_kompakt': false});
     await tester.pumpWidget(const MaterialApp(home: _TercihEkrani()));
     await tester.pumpAndSettle();
     expect(find.text('Kart seçili'), findsOneWidget);
