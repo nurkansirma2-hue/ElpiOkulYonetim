@@ -42,6 +42,24 @@ function okulYanitSil(formId, responseId) {
   }
 }
 
+/** Yalnız salt okunur tanı: hiçbir yanıt kimliği, cevap veya kişisel bilgi döndürmez. */
+function okulYanitKimlikTani(formId, responseId) {
+  if (typeof formId !== 'string' || !/^[a-zA-Z0-9_-]{1,300}$/.test(formId) ||
+      typeof responseId !== 'string' || !/^[a-zA-Z0-9_-]{1,300}$/.test(responseId)) {
+    throw new Error('Form veya yanıt kimliği geçersiz.');
+  }
+  const form = FormApp.openById(formId);
+  if (form.getId() !== formId) throw new Error('Form kimliği eşleşmedi.');
+  const responses = form.getResponses();
+  const matches = responses.filter(r => r.getId() === responseId).length;
+  return {
+    protocol: 'okul-yanit-kimlik-tani/v1',
+    formId: formId,
+    scriptCount: responses.length,
+    exactMatches: matches
+  };
+}
+
 /** Kurulum doğrulaması: hiçbir formu veya yanıtı değiştirmez. */
 function okulYanitSilKurulumKontrol() {
   return {protocol: 'okul-yanit-sil/v1', ready: true,

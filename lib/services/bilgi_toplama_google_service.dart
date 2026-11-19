@@ -818,8 +818,48 @@ class BilgiToplamaGoogleService {
         await durum(token, formId);
         return;
       }
+      // Hedef REST yanıtı hâlâ mevcutsa salt okunur kimlik karşılaştırması
+      // yap. Kimlikler/cevaplar loglanmaz, başka bir yanıt seçilmez.
+      String tani = '';
+      if (kontrol.statusCode == 200) {
+        try {
+          final taniData = _oku(
+            await _client
+                .post(
+                  Uri.https('script.googleapis.com', '/v1/scripts/$deploymentId:run'),
+                  headers: headers,
+                  body: jsonEncode({
+                    'function': 'okulYanitKimlikTani',
+                    'parameters': [formId, responseId],
+                    'devMode': false,
+                  }),
+                )
+                .timeout(const Duration(seconds: 30)),
+          );
+          final yanit = taniData['response'];
+          final sonuc = yanit is Map ? yanit['result'] : null;
+          if (taniData['error'] == null &&
+              taniData['done'] == true &&
+              sonuc is Map &&
+              sonuc['protocol'] == 'okul-yanit-kimlik-tani/v1' &&
+              sonuc['formId'] == formId &&
+              sonuc['scriptCount'] is int &&
+              sonuc['exactMatches'] is int &&
+              (sonuc['scriptCount'] as int) >= 0 &&
+              (sonuc['exactMatches'] as int) >= 0 &&
+              (sonuc['exactMatches'] as int) <= (sonuc['scriptCount'] as int)) {
+            tani = ' REST API hedef yanıtı buldu; Apps Script yanıt sayısı: '
+                '${sonuc['scriptCount']}, birebir kimlik eşleşmesi: '
+                '${sonuc['exactMatches']}.';
+          }
+        } catch (_) {
+          // Tanı başarısızsa asıl silme hatasını gizleme.
+        }
+      }
       throw StateError(
-        'Google silme betiği tamamlanamadı. Apps Script dağıtımını, aynı Cloud projesini ve Google Forms iznini kontrol edin. Yanıt uygulamada korundu.',
+        'Google silme betiği tamamlanamadı.$tani '
+        'Apps Script yetkisini, dağıtımını ve form/yanıt kimliklerini kontrol edin. '
+        'Yanıt uygulamada korundu.',
       );
     }
     final response = data['response'];

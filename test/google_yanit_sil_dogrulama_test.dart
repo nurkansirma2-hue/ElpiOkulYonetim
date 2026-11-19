@@ -61,6 +61,57 @@ void main() {
     );
   }
 
+  test('başarısız silmede REST ve Apps Script kimlik sayımı salt okunur karşılaştırılır', () async {
+    var diagnoseCount = 0;
+    final client = MockClient((request) async {
+      if (request.url.host == 'script.googleapis.com') {
+        final body = jsonDecode(request.body);
+        switch (body['function']) {
+          case 'okulYanitSilKurulumKontrol':
+            return http.Response(jsonEncode({
+              'done': true,
+              'response': {'result': {
+                'protocol': 'okul-yanit-sil/v1',
+                'ready': true,
+                'implementation': 'exact-response-2026-11-19',
+              }},
+            }), 200);
+          case 'okulYanitSil':
+            return http.Response(jsonEncode({
+              'done': true,
+              'error': {'code': 3},
+            }), 200);
+          case 'okulYanitKimlikTani':
+            diagnoseCount++;
+            expect(body['parameters'], ['f1', 'r1']);
+            return http.Response(jsonEncode({
+              'done': true,
+              'response': {'result': {
+                'protocol': 'okul-yanit-kimlik-tani/v1',
+                'formId': 'f1',
+                'scriptCount': 23,
+                'exactMatches': 0,
+              }},
+            }), 200);
+        }
+      }
+      if (request.url.path.endsWith('/responses/r1')) {
+        return http.Response('{}', 200);
+      }
+      return http.Response(jsonEncode({'formId': 'f1'}), 200);
+    });
+    await expectLater(
+      BilgiToplamaGoogleService(client: client)
+          .googleYanitSil('deployment', 'token', 'f1', 'r1'),
+      throwsA(isA<StateError>().having(
+        (error) => error.message.toString(), 'tanı',
+        allOf(contains('yanıt sayısı: 23'), contains('kimlik eşleşmesi: 0')),
+      )),
+    );
+    expect(diagnoseCount, 1);
+    client.close();
+  });
+
   test('erişilemeyen formun 404 sonucu yanıt yokluğu sayılmaz', () async {
     var responseChecks = 0;
     final client = MockClient((r) async {

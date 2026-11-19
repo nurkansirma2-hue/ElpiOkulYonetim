@@ -107,6 +107,24 @@ test('geçersiz kimlikte forma erişilmez', () => {
   assert.throws(() => ctx.okulYanitSil('f1', '../r1'), /geçersiz/);
   assert.deepEqual(state.opened, []);
 });
+test('kimlik tanısı salt okunur sayımları verir; cevap ve kimlik döndürmez', () => {
+  const { state, ctx } = setup(['r1', 'r2']);
+  const result = ctx.okulYanitKimlikTani('f1', 'r3');
+  assert.equal(result.protocol, 'okul-yanit-kimlik-tani/v1');
+  assert.equal(result.formId, 'f1');
+  assert.equal(result.scriptCount, 2);
+  assert.equal(result.exactMatches, 0);
+  assert.equal(Object.hasOwn(result, 'responseId'), false);
+  assert.deepEqual(state.ids, ['r1', 'r2']);
+  assert.deepEqual(state.deleted, []);
+});
+
+test('kimlik tanısı erişim veya liste hatasında silmez', () => {
+  const { state, ctx } = setup(['r1'], false, { listError: true });
+  assert.throws(() => ctx.okulYanitKimlikTani('f1', 'r1'), /Invalid data reading form/);
+  assert.deepEqual(state.deleted, []);
+});
+
 test('kurulum kontrolü veri değiştirmez', () => {
   const { state, ctx } = setup(['r1']);
   assert.equal(ctx.okulYanitSilKurulumKontrol().ready, true);
