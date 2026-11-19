@@ -9,8 +9,12 @@ function okulYanitSil(formId, responseId) {
   try {
     const form = FormApp.openById(formId);
     // Kesin yanıt kimliği kullanılır; ad, okul no veya sıra ile silme yapılmaz.
-    const exists = form.getResponses().some(r => r.getId() === responseId);
-    if (exists) form.deleteResponse(responseId);
+    if (form.getId() !== formId) throw new Error('Form kimliği eşleşmedi.');
+    const response = form.getResponse(responseId);
+    if (!response || response.getId() !== responseId) {
+      throw new Error('Yanıt kimliği bu formda doğrulanamadı; silme yapılmadı.');
+    }
+    form.deleteResponse(response.getId());
     const absent = !form.getResponses().some(r => r.getId() === responseId);
     if (!absent) throw new Error('Yanıtın silindiği doğrulanamadı.');
     return {
@@ -18,7 +22,8 @@ function okulYanitSil(formId, responseId) {
       formId: formId,
       responseId: responseId,
       absent: true,
-      deleted: exists
+      deleted: true,
+      implementation: 'exact-response-2026-11-19'
     };
   } finally {
     lock.releaseLock();
@@ -27,7 +32,8 @@ function okulYanitSil(formId, responseId) {
 
 /** Kurulum doğrulaması: hiçbir formu veya yanıtı değiştirmez. */
 function okulYanitSilKurulumKontrol() {
-  return {protocol: 'okul-yanit-sil/v1', ready: true};
+  return {protocol: 'okul-yanit-sil/v1', ready: true,
+    implementation: 'exact-response-2026-11-19'};
 }
 
 /** Yalnız seçilen cevabın düzenleme bağlantısı; genel form bağlantısı değildir. */
