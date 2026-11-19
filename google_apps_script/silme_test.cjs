@@ -16,7 +16,10 @@ function setup(ids, fail = false, options = {}) {
         getResponses: () => {
           state.listed++;
           if (options.listError) throw Error('Invalid data reading form');
-          return (options.emptyList ? [] : state.ids).map(id => ({ getId: () => id }));
+          return (options.emptyList ? [] : state.ids).map((id, i) => ({
+            getId: () => id,
+            getTimestamp: () => new Date(options.timestamps?.[i] || '2026-11-18T18:26:00.000Z'),
+          }));
         },
         getResponse: id => {
           if (options.getResponseError) throw Error('Invalid data updating form');
@@ -122,6 +125,27 @@ test('kimlik tanısı salt okunur sayımları verir; cevap ve kimlik döndürmez
 test('kimlik tanısı erişim veya liste hatasında silmez', () => {
   const { state, ctx } = setup(['r1'], false, { listError: true });
   assert.throws(() => ctx.okulYanitKimlikTani('f1', 'r1'), /Invalid data reading form/);
+  assert.deepEqual(state.deleted, []);
+});
+
+
+test('eşleşmeyen REST kimliğinde saat adayları salt okunur gösterilir; silme olmaz', () => {
+  const { state, ctx } = setup(['script-r1', 'script-r2'], false, {
+    timestamps: ['2026-11-18T18:26:00.000Z', '2026-11-18T18:30:00.000Z'],
+  });
+  const result = ctx.okulYanitKimlikTani('f1', 'rest-r1', '2026-11-18T18:26:00.000Z');
+  assert.equal(result.exactMatches, 0);
+  assert.equal(result.timestampMatches, 1);
+  assert.equal(result.mappingVerified, false);
+  assert.deepEqual(state.deleted, []);
+  assert.deepEqual(state.ids, ['script-r1', 'script-r2']);
+});
+
+test('aynı gönderim zamanına sahip iki yanıt kesin eşleşme sayılmaz', () => {
+  const { state, ctx } = setup(['script-r1', 'script-r2']);
+  const result = ctx.okulYanitKimlikTani('f1', 'rest-r1', '2026-11-18T18:26:00.000Z');
+  assert.equal(result.timestampMatches, 2);
+  assert.equal(result.mappingVerified, false);
   assert.deepEqual(state.deleted, []);
 });
 

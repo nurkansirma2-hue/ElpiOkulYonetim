@@ -823,6 +823,8 @@ class BilgiToplamaGoogleService {
       String tani = '';
       if (kontrol.statusCode == 200) {
         try {
+          final hedef = jsonDecode(utf8.decode(kontrol.bodyBytes));
+          final olusturulma = hedef is Map ? hedef['createTime'] : null;
           final taniData = _oku(
             await _client
                 .post(
@@ -830,7 +832,7 @@ class BilgiToplamaGoogleService {
                   headers: headers,
                   body: jsonEncode({
                     'function': 'okulYanitKimlikTani',
-                    'parameters': [formId, responseId],
+                    'parameters': [formId, responseId, olusturulma],
                     'devMode': false,
                   }),
                 )
@@ -850,7 +852,10 @@ class BilgiToplamaGoogleService {
               (sonuc['exactMatches'] as int) <= (sonuc['scriptCount'] as int)) {
             tani = ' REST API hedef yanıtı buldu; Apps Script yanıt sayısı: '
                 '${sonuc['scriptCount']}, birebir kimlik eşleşmesi: '
-                '${sonuc['exactMatches']}.';
+                '${sonuc['exactMatches']}.'
+                ' Aynı gönderim zamanındaki aday sayısı: '
+                '${sonuc['timestampMatches'] is int ? sonuc['timestampMatches'] : 'belirlenemedi'}.'
+                ' Saat eşleşmesi silme yetkisi vermez.';
           }
         } catch (_) {
           // Tanı başarısızsa asıl silme hatasını gizleme.

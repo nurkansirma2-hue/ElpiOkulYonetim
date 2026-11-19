@@ -43,7 +43,7 @@ function okulYanitSil(formId, responseId) {
 }
 
 /** Yalnız salt okunur tanı: hiçbir yanıt kimliği, cevap veya kişisel bilgi döndürmez. */
-function okulYanitKimlikTani(formId, responseId) {
+function okulYanitKimlikTani(formId, responseId, restCreateTime) {
   if (typeof formId !== 'string' || !/^[a-zA-Z0-9_-]{1,300}$/.test(formId) ||
       typeof responseId !== 'string' || !/^[a-zA-Z0-9_-]{1,300}$/.test(responseId)) {
     throw new Error('Form veya yanıt kimliği geçersiz.');
@@ -52,11 +52,25 @@ function okulYanitKimlikTani(formId, responseId) {
   if (form.getId() !== formId) throw new Error('Form kimliği eşleşmedi.');
   const responses = form.getResponses();
   const matches = responses.filter(r => r.getId() === responseId).length;
+  // Saat yalnız salt okunur aday tespiti içindir; silme hedefi olarak kullanılmaz.
+  // Yanıt içeriği, öğrenci bilgisi veya alternatif kimlik dışarı verilmez.
+  let timestampMatches = null;
+  if (typeof restCreateTime === 'string' && restCreateTime.length <= 80) {
+    const time = new Date(restCreateTime);
+    if (!isNaN(time.getTime())) {
+      timestampMatches = responses.filter(r => {
+        const submitted = r.getTimestamp();
+        return submitted instanceof Date && submitted.getTime() === time.getTime();
+      }).length;
+    }
+  }
   return {
     protocol: 'okul-yanit-kimlik-tani/v1',
     formId: formId,
     scriptCount: responses.length,
-    exactMatches: matches
+    exactMatches: matches,
+    timestampMatches: timestampMatches,
+    mappingVerified: matches === 1
   };
 }
 
