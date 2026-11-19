@@ -60,7 +60,7 @@ function okulYanitKimlikTani(formId, responseId, restCreateTime) {
     if (!isNaN(time.getTime())) {
       timestampMatches = responses.filter(r => {
         const submitted = r.getTimestamp();
-        return submitted instanceof Date && submitted.getTime() === time.getTime();
+        return submitted && typeof submitted.getTime === 'function' && submitted.getTime() === time.getTime();
       }).length;
     }
   }
