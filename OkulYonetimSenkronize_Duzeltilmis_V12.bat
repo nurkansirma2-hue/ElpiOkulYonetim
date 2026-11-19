@@ -160,7 +160,9 @@ function Risky([string]$path) {
 function Generated([string]$path) {
     $p = $path.Replace('\','/')
     return $p -match '(?i)\.(apk|aab|ipa)$' -or
-        $p -match '(?i)(^|/)(build|\.dart_tool|\.gradle|\.codex-remote-attachments|\.elpi-git-backups|work|elpi_okul_yonetim)/'
+        $p -match '(?i)(^|/)(build|\.dart_tool|\.gradle|\.codex-remote-attachments|\.elpi-git-backups|work)/' -or
+        # Eski proje yalniz kokte dislanir; Android paket klasoru kaynak koddur.
+        $p -match '(?i)^elpi_okul_yonetim/'
 }
 function GuardWorkingTree {
     # Turkce/Unicode adlari Git yardimcisi tirnaklamadan UTF-8 olarak okur.
