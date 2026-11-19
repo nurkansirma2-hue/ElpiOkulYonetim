@@ -25,10 +25,11 @@ Her proje görevinde aşağıdaki temel belgelerin güncel içeriklerini oku; ar
 | [UI_STANDARDI.md](docs/03_Tasarim/UI_STANDARDI.md) | Flutter UI |
 | [GORSEL_UYGULAMA.md](docs/03_Tasarim/GORSEL_UYGULAMA.md) | UYGULA |
 | [FORM_MODULU_STANDARTI.md](docs/04_Ortak_Sistemler/FORM_MODULU_STANDARTI.md) | Form / Google Forms |
+| [GOOGLE_FORM_HESAP_VE_YETKI_STANDARDI.md](docs/04_Ortak_Sistemler/GOOGLE_FORM_HESAP_VE_YETKI_STANDARDI.md) | Google Forms hesabı / OAuth / Apps Script / form erişimi ve bütün Google form işlemleri |
 | [MESAJLASMA_STANDARTI.md](docs/04_Ortak_Sistemler/MESAJLASMA_STANDARTI.md) | Mesaj / alıcı / form paylaşımı |
 | [ORTAK_LISTE_ARAC_CUBUGU.md](docs/04_Ortak_Sistemler/ORTAK_LISTE_ARAC_CUBUGU.md) | Ortak liste kalıbı açıkça istendiğinde |
 
-Flutter ekranı oluşturulurken veya değiştirilirken docs/03_Tasarim/UI_STANDARDI.md okunur; mevcut ortak UI bileşenleri kullanılır. Form ve mesajlaşma bağlantılarında iki standart birlikte okunur. Ortak liste standardı otomatik genel dönüşüm yetkisi değildir. GitHub işlemlerinde GitHub/Codex standardı zorunludur. Yeni standart eklendiğinde yönlendirme tablosu kullanıcı onayıyla güncellenir.
+Flutter ekranı oluşturulurken veya değiştirilirken docs/03_Tasarim/UI_STANDARDI.md okunur; mevcut ortak UI bileşenleri kullanılır. Form işlemlerinde FORM_MODULU_STANDARTI ve GOOGLE_FORM_HESAP_VE_YETKI_STANDARDI birlikte okunur. Form paylaşımı veya mesajlaşma bağlantısı varsa MESAJLASMA_STANDARTI da okunur. Google Forms işlemleri etkin kullanıcının kendi Google hesabının gerçek izinleri ve uygulama kapsamı doğrulanarak yürütülür; geliştiricinin kişisel hesabına bağımlı varsayılmaz. Ortak liste standardı otomatik genel dönüşüm yetkisi değildir. GitHub işlemlerinde GitHub/Codex standardı zorunludur. Yeni standart eklendiğinde yönlendirme tablosu kullanıcı onayıyla güncellenir.
 
 ## SON İLKE
 
