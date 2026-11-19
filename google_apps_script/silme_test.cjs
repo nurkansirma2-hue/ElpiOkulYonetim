@@ -6,18 +6,25 @@ const path = require('node:path');
 const code = fs.readFileSync(path.join(__dirname, 'Code.gs'), 'utf8');
 
 function setup(ids, fail = false, options = {}) {
-  const state = { ids: [...ids], deleted: [], released: 0, opened: [], edits: false };
+  const state = { ids: [...ids], deleted: [], released: 0, opened: [], edits: false, listed: 0 };
   const ctx = vm.createContext({
     FormApp: { openById: id => {
       state.opened.push(id);
       if (fail) throw Error('Permission denied');
       return {
         getId: () => options.formId || id,
-        getResponses: () => (options.emptyList ? [] : state.ids).map(id => ({ getId: () => id })),
-        getResponse: id => state.ids.includes(id) ? {
-          getId: () => options.responseId || id,
-          getEditResponseUrl: () => `https://docs.google.com/forms/d/e/test/viewform?edit2=${id}`,
-        } : null,
+        getResponses: () => {
+          state.listed++;
+          if (options.listError) throw Error('Invalid data reading form');
+          return (options.emptyList ? [] : state.ids).map(id => ({ getId: () => id }));
+        },
+        getResponse: id => {
+          if (options.getResponseError) throw Error('Invalid data updating form');
+          return state.ids.includes(id) ? {
+            getId: () => options.responseId || id,
+            getEditResponseUrl: () => `https://docs.google.com/forms/d/e/test/viewform?edit2=${id}`,
+          } : null;
+        },
         isAcceptingResponses: () => true,
         setAllowResponseEdits: value => state.edits = value,
         deleteResponse: id => {
@@ -43,13 +50,30 @@ test('yalnız hedef yanıt silinir; tekrar deneme diğer yanıtı silmez', () =>
   assert.equal(state.released, 2);
 });
 
-test('boş yanıt listesi doğrudan bulunan yanıtın silinmesini atlamaz', () => {
+test('boş yanıt listesinde silme yapılmaz; diğer kayıtlar korunur', () => {
   const { state, ctx } = setup(['r1', 'r2'], false, { emptyList: true });
-  assert.equal(ctx.okulYanitSil('f1', 'r1').deleted, true);
-  assert.deepEqual(state.ids, ['r2']);
+  assert.throws(() => ctx.okulYanitSil('f1', 'r1'), /eşleşmedi/);
+  assert.deepEqual(state.ids, ['r1', 'r2']);
+  assert.deepEqual(state.deleted, []);
 });
 
-for (const options of [{ formId: 'f2' }, { responseId: 'r2' }]) {
+test('getResponse hata verse bile kesin liste eşleşmesiyle yalnız hedef silinir', () => {
+  const { state, ctx } = setup(['r1', 'r2'], false, { getResponseError: true });
+  assert.equal(ctx.okulYanitSil('f1', 'r1').deleted, true);
+  assert.deepEqual(state.ids, ['r2']);
+  assert.deepEqual(state.deleted, ['r1']);
+  assert.equal(state.listed, 2);
+});
+
+test('Google yanıt listesi okunamıyorsa hiçbir yanıt silinmez', () => {
+  const { state, ctx } = setup(['r1', 'r2'], false, { listError: true });
+  assert.throws(() => ctx.okulYanitSil('f1', 'r1'), /yanıt listesi okunamadı/);
+  assert.deepEqual(state.deleted, []);
+  assert.deepEqual(state.ids, ['r1', 'r2']);
+  assert.equal(state.released, 1);
+});
+
+for (const options of [{ formId: 'f2' }]) {
   test(`kimlik uyuşmazlığında hiçbir yanıt silinmez: ${JSON.stringify(options)}`, () => {
     const { state, ctx } = setup(['r1', 'r2'], false, options);
     assert.throws(() => ctx.okulYanitSil('f1', 'r1'), /eşleşmedi|doğrulanamadı/);

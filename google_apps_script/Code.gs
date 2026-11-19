@@ -10,11 +10,23 @@ function okulYanitSil(formId, responseId) {
     const form = FormApp.openById(formId);
     // Kesin yanıt kimliği kullanılır; ad, okul no veya sıra ile silme yapılmaz.
     if (form.getId() !== formId) throw new Error('Form kimliği eşleşmedi.');
-    const response = form.getResponse(responseId);
-    if (!response || response.getId() !== responseId) {
-      throw new Error('Yanıt kimliği bu formda doğrulanamadı; silme yapılmadı.');
+    // getResponse(id) bazı Google formlarında "Invalid data updating form"
+    // hatası üretebilir. Listeyi okuyup yalnız birebir kimliği eşleşeni seç.
+    let responses;
+    try {
+      responses = form.getResponses();
+    } catch (e) {
+      throw new Error('Google Forms yanıt listesi okunamadı; silme yapılmadı: ' + e.message);
     }
-    form.deleteResponse(response.getId());
+    const matching = responses.filter(r => r.getId() === responseId);
+    if (matching.length !== 1) {
+      throw new Error(
+        'Yanıt kimliği bu formun yanıt listesiyle birebir eşleşmedi (eşleşme: ' +
+        matching.length + '); silme yapılmadı.'
+      );
+    }
+    form.deleteResponse(responseId);
+    // Silme betiği tek başına yeterli değildir; Flutter ayrıca Forms API 404 doğrular.
     const absent = !form.getResponses().some(r => r.getId() === responseId);
     if (!absent) throw new Error('Yanıtın silindiği doğrulanamadı.');
     return {
