@@ -31,7 +31,7 @@ void main() {
               );
             }
             expect(body['function'], 'okulYanitSil');
-            expect(body['parameters'], ['f1', 'r1', null]);
+            expect(body['parameters'], ['f1', 'r1']);
             return http.Response(
               jsonEncode({
                 'done': true,
@@ -83,7 +83,7 @@ void main() {
             }), 200);
           case 'okulYanitKimlikTani':
             diagnoseCount++;
-            expect(body['parameters'], ['f1', 'r1']);
+            expect(body['parameters'], ['f1', 'r1', null]);
             return http.Response(jsonEncode({
               'done': true,
               'response': {'result': {
