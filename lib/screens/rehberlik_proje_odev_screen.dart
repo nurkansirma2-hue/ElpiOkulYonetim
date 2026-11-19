@@ -713,7 +713,56 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     await _yukle();
   }
 
-  List<Map<String, dynamic>> get yanitSatirlari => hamYanitlar.map((y) {
+  // Her Google yanıtını ayrı tut; aynı öğrencinin geçmişini birleştirme.
+  // Google zaman damgası yerel kayıt oluşturma tarihinden önceliklidir.
+  List<Map<String, dynamic>> get yanitSatirlari {
+    final satirlar = hamYanitlar.map((y) {
+      final raw = jsonDecode(y['HamYanit'] as String) as Map;
+      final googleZamani = raw['lastSubmittedTime']?.toString() ??
+          raw['createTime']?.toString();
+      final zaman = DateTime.tryParse(googleZamani ?? '') ??
+          DateTime.tryParse(y['OlusturmaTarihi']?.toString() ?? '');
+      final okulNo = y['GirilenOkulNo']?.toString().trim() ?? '';
+      return {
+        ..._yanitSatiri(y),
+        'gonderimZamani': googleZamani,
+        'gorunumZamani': zaman,
+        'ogrenciAnahtari': okulNo,
+      };
+    }).toList();
+    satirlar.sort((a, b) {
+      final aNo = a['ogrenciAnahtari'] as String;
+      final bNo = b['ogrenciAnahtari'] as String;
+      final aSayi = int.tryParse(aNo);
+      final bSayi = int.tryParse(bNo);
+      // Okul numarası sayısal artan; tanınmayan numaralar sonda.
+      if (aSayi != null && bSayi != null) {
+        final noKarsilastirma = aSayi.compareTo(bSayi);
+        if (noKarsilastirma != 0) return noKarsilastirma;
+      } else if (aSayi != null) {
+        return -1;
+      } else if (bSayi != null) {
+        return 1;
+      } else {
+        final noKarsilastirma = aNo.compareTo(bNo);
+        if (noKarsilastirma != 0) return noKarsilastirma;
+      }
+      // Aynı öğrencinin yanıtları en yeniden eskiye sıralanır.
+      final x = a['gorunumZamani'] as DateTime?;
+      final y = b['gorunumZamani'] as DateTime?;
+      if (x == null) return y == null ? 0 : 1;
+      if (y == null) return -1;
+      return y.compareTo(x);
+    });
+    final gorulen = <String>{};
+    for (final satir in satirlar) {
+      final okulNo = satir['ogrenciAnahtari'] as String;
+      satir['sonYanit'] = okulNo.isNotEmpty && gorulen.add(okulNo);
+    }
+    return satirlar;
+  }
+
+  Map<String, dynamic> _yanitSatiri(Map<String, Object?> y) {
     final eslesen = tercihler.where((r) => r['yanitId'] == y['Id']);
     if (eslesen.isNotEmpty) {
       return {...eslesen.first, 'kaynakSurum': y['KaynakSurum']};
@@ -756,7 +805,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       'onayli': false,
       'OgrenciId': null,
     };
-  }).toList();
+  }
 
   void _yanitSec(Map<String, dynamic> r) => setState(() {
     yanitSecimModu = true;
@@ -1895,6 +1944,12 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                           color: Theme.of(context).colorScheme.error,
                         ),
                       ),
+                    Text(
+                      'Gönderim: ${_tarihYaz(r['gonderimZamani'] as String?)}'
+                      '${r['gonderimZamani'] == null ? ' (yerel kayıt zamanı: ${_tarihYaz((r['gorunumZamani'] as DateTime?)?.toIso8601String())})' : ''}',
+                    ),
+                    if (r['sonYanit'] == true)
+                      const Text('Son yanıt', style: TextStyle(fontWeight: FontWeight.bold)),
                     if (r['onayli'] == true) const Text('Onaylı'),
                   ],
                 ),

@@ -223,6 +223,11 @@ class BireyselBakimService {
       if (await hedef.length() > azamiBoyut) {
         throw StateError('Yedek paketi 512 MB sınırını aşıyor.');
       }
+      // ZIP'in okunabilirliğini, tüm belge özetlerini, tablo/sütun yapısını
+      // ve ilişkileri doğrulamadan kullanıcıya başarılı yedek sunma.
+      // Hata halinde catch bloğu eksik ZIP'i kaldırır; canlı veriye dokunulmaz.
+      final kontrol = await _paketiOku(hedef.path);
+      await _dogrula(db, kontrol);
       return _bilgi(hedef, m);
     } catch (_) {
       if (await hedef.exists()) await hedef.delete();

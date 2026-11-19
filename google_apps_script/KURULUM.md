@@ -63,7 +63,8 @@ Bu klasördeki `Code.gs` ve `appsscript.json`, Flutter uygulamasındaki
   forma erişimi ve yanıt için HTTP 404 sonucunu kontrol eder.
 - Google silmesi doğrulanmadan yerel yanıt listeden kaldırılmaz.
 - Ağ kesilmesi veya Google silmesinden sonra yerel işlem hatası durumunda tekrar denenebilir.
-  Betik aynı yanıt yoksa bunu doğrulayıp güvenli biçimde sonuç döndürür.
+  Betik bulunamayan yanıtı başarı saymaz. Önceden silinmiş yanıtın yeniden
+  denenmesinde Flutter, erişilebilir form ve yanıt için HTTP 404 ile yerel işlemi tamamlar.
 - Onaylı öğrenci bilgileri ve yerel kayıt geçmişi korunur. Forma bağlı Google E-Tablolar
   kopyaları silinmez; bu, Google'ın `deleteResponse` yönteminin davranışıdır.
 - `okulYanitSilKurulumKontrol` hiçbir veriyi değiştirmeden protokolü kontrol etmek içindir.
@@ -71,6 +72,40 @@ Bu klasördeki `Code.gs` ve `appsscript.json`, Flutter uygulamasındaki
 
 Hesap ilişkilendirmesi, API dağıtımı ve telefon izni tamamlanmadan canlı entegrasyon
 hazır kabul edilmez. Yerel testler Google hesabında canlı silme yapmaz.
+
+## 19 Kasım 2026 — kimlik doğrulaması düzeltmesi (yalnız kaynak kod)
+
+- Önceki kod, `getResponses()` içinde kimlik bulunmayınca silme yapmadan
+  `absent:true, deleted:false` döndürebiliyordu. Bu, Forms API'de yanıtın
+  bulunmadığını kanıtlamaz. Yeni kod `form.getId()` ve `getResponse(responseId)`
+  ile kesin eşleşmeyi doğrular; bulunamayan veya farklı kimlikte silme yapmaz.
+  Yanıt kimlikleri dönüştürülmez; ad, sıra, zaman veya öğrenciyle tahmini eşleme yoktur.
+- Flutter, yanıt GET isteği HTTP 200 dönerken boş listeyi başarı saymaz.
+  Eski betik `deleted:false` döndürür ve API 200 verirse kimlik/dağıtım
+  uyuşmazlığı bildirilir; yerel kayıt korunur.
+- `okulYanitSilKurulumKontrol` ve başarılı silme sonucu, kaynak sürümünü
+  `implementation: exact-response-2026-11-19` alanıyla bildirir. Aynı dağıtım
+  kimliği farklı kod sürümlerine işaret edebilir; `devMode:false` yayımlanmış
+  sürümü çalıştırır. Editörde kontrolü çalıştırmak dağıtımı doğrulamaz.
+- Bu çalışma canlı betiği, dağıtımı veya Google yanıtlarını değiştirmedi.
+  Gerçek olayın yanlış form/yanıt kimliğinden mi, eski dağıtımdan mı kaynaklandığı
+  canlı salt okunur dağıtım/kimlik kanıtı olmadan kesinleştirilmedi.
+  Daha sonraki yetkili kontrolde profil ayarı → derleme varsayılanı sırası,
+  kullanılan API dağıtımının bağlı projesi ve sürümü karşılaştırılmalıdır.
+  Bu not canlı güncelleme veya gerçek yanıt silme yetkisi vermez.
+
+### Yerel doğrulama sonucu
+
+- `node --test google_apps_script/silme_test.cjs`: 11/11 geçti.
+- Silme, yeniden deneme ve veri koruma odaklı Flutter testleri: 19/19 geçti.
+- Değişen üç Dart dosyası `dart analyze` ile temiz. `flutter analyze`
+  analiz sunucusunda `FormatException: Unexpected end of input` ile kesildi;
+  doğrudan Dart analizi başarıyla tamamlandı.
+- Dört Flutter test dosyasının tamamı: 86 geçti, 16 başarısız.
+  Aynı ortamda değişmemiş `bd02786` kaynağında üç mevcut dosya:
+  81 geçti, aynı 16 test başarısız. Başarısız test adları birebir karşılaştırıldı;
+  mevcut ekran hataları bu silme düzeltmesinin kapsamına alınmadı.
+- Testler Google hesabına bağlanmaz; HTTP taklitleri ve bellek veritabanı kullanır.
 
 ## Kaynaklar
 

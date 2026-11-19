@@ -1198,7 +1198,7 @@ void main() {
       expect(await db.rawQuery('PRAGMA foreign_key_check'), isEmpty);
     },
   );
-  test('silme sonrası HTTP 200 liste yokluğu ile doğrulanır', () async {
+  test('HTTP 200 dönen yanıt boş listeye rağmen silinmiş sayılmaz', () async {
     final id = await taslak();
     await google.hazirla(s, b, id, 'test');
     cevaplar = [cevap()];
@@ -1213,10 +1213,13 @@ void main() {
           ? client.get(r.url, headers: r.headers)
           : client.post(r.url, headers: r.headers, body: r.bodyBytes);
     });
-    await BilgiToplamaGoogleService(client: proxy).formuSil(s, b, id, 'test');
-    expect(kontrol, 1);
+    await expectLater(
+      BilgiToplamaGoogleService(client: proxy).formuSil(s, b, id, 'test'),
+      throwsStateError,
+    );
+    expect(kontrol, 5);
     expect(cevaplar, isEmpty);
-    expect(await s.formlar(b), isEmpty);
+    expect(await s.formlar(b), hasLength(1));
   });
   test('silme betiğine rağmen API listesinde duran yanıt korunur', () async {
     final id = await taslak();
@@ -1255,6 +1258,43 @@ void main() {
     expect(await s.formlar(b), hasLength(1));
     expect(await db.query('BilgiToplamaYanit'), onceki);
   });
+  test(
+    'önceden Google’dan silinen yanıt betik hatasında 404 ile tamamlanır',
+    () async {
+      final id = await taslak();
+      await google.hazirla(s, b, id, 'test');
+      final raw = cevap();
+      final yid = (await s.yanitlariKaydet(b, id, [raw])).single;
+      await s.onayla(b, await s.onizle(b, yid));
+      await s.yanitlariKaydet(b, id, [
+        {...raw, 'responseId': 'r2'},
+      ]);
+      final ogrenci = await db.query('Ogrenci');
+      cevaplar = [
+        {...raw, 'responseId': 'r2'},
+      ];
+      await s.silmeBaglantisiniKaydet(b, 'test-deployment');
+      final proxy = MockClient((r) async {
+        if (r.url.host == 'script.googleapis.com') {
+          return http.Response(
+            jsonEncode({
+              'done': true,
+              'error': {'code': 3},
+            }),
+            200,
+          );
+        }
+        return client.get(r.url, headers: r.headers);
+      });
+      await BilgiToplamaGoogleService(
+        client: proxy,
+      ).yanitiSil(s, b, await s.onizle(b, yid), 'test');
+      expect((await s.yanitlar(b, id)).single['GoogleYanitId'], 'r2');
+      expect(await db.query('Ogrenci'), ogrenci);
+      expect(cevaplar.single['responseId'], 'r2');
+      proxy.close();
+    },
+  );
   test(
     'Google form silme hatasında yerel form ve ham cevaplar korunur; yeniden denenebilir',
     () async {

@@ -774,6 +774,21 @@ class BilgiToplamaGoogleService {
           .timeout(const Duration(seconds: 60)),
     );
     if (data['error'] != null) {
+      // Önceki deneme Google'da silip yerel kayıt aşamasında kesilmiş olabilir.
+      // Betik hatası tek başına yokluk kanıtı değildir; erişilebilir form + 404 ister.
+      await durum(token, formId);
+      final kontrol = await _client
+          .get(
+            Uri.parse(
+              '$_kok/${Uri.encodeComponent(formId)}/responses/${Uri.encodeComponent(responseId)}',
+            ),
+            headers: {...headers, 'Cache-Control': 'no-cache'},
+          )
+          .timeout(const Duration(seconds: 30));
+      if (kontrol.statusCode == 404) {
+        await durum(token, formId);
+        return;
+      }
       throw StateError(
         'Google silme betiği tamamlanamadı. Apps Script dağıtımını, aynı Cloud projesini ve Google Forms iznini kontrol edin. Yanıt uygulamada korundu.',
       );
@@ -793,7 +808,6 @@ class BilgiToplamaGoogleService {
     // Betiğin dönüşüne ek olarak, aynı hesaptan Forms API ile doğrula.
     // Önce form erişimini doğrula: formun 404 olması yanıt silindi demek değildir.
     await durum(token, formId);
-    final g = RehberlikGoogleFormService(client: _client);
     // Google Forms API bazen silinen yanıtı kısa süre daha listeler.
     // Silme kesinleşmeden yerel yanıt kaydını asla kaldırma.
     const beklemeler = <Duration>[
@@ -822,17 +836,15 @@ class BilgiToplamaGoogleService {
           'Google silme doğrulaması başarısız (HTTP ${kontrol.statusCode}). Yerel kayıt korundu.',
         );
       }
-      final rows = await g.yanitlariGetir(
-        erisimBelirteci: token,
-        googleFormId: formId,
-      );
-      if (!rows.any((r) => r['responseId'] == responseId)) {
-        await durum(token, formId);
-        return;
+      if (result['deleted'] == false) {
+        throw StateError(
+          'Silme betiği yanıtı bulamadı ancak Forms API yanıtı hâlâ gösteriyor. '
+          'Form/yanıt kimliği veya Apps Script dağıtım sürümü uyuşmuyor. Yerel kayıt korundu.',
+        );
       }
     }
     throw StateError(
-      'Silme betiği tamamlandı ancak yanıt Google Forms API listesinde hâlâ görünüyor. '
+      'Silme betiği tamamlandı ancak yanıt Google Forms API tarafından hâlâ döndürülüyor. '
       '15 saniyelik tekrar kontrolünden sonra da yanıt doğrulanamadı. Yerel kayıt korundu. Google Forms üzerinden yanıtı kontrol edin ve daha sonra yeniden deneyin.',
     );
   }
