@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/mesajlasma.dart';
 import '../models/ortak_import.dart';
@@ -923,6 +924,86 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     if (silinen.kalan == 0) _yanitSeciminiKapat();
     sonuc =
         '${silinen.basarili} yanıt silindi; ${silinen.kalan} yanıt kaldı.${silinen.hatalar.isEmpty ? '' : '\n${silinen.hatalar.join('\n')}'}';
+  }
+
+  /// Sadece tek bir REST yanıt kimliği seçilmişken çalışır.
+  /// Aynı öğrencinin diğer yanıtları hedefe dahil edilmez.
+  String _tekSeciliGoogleYanitId() {
+    _secilenYanitlariDogrula();
+    if (yanitSecimi.length != 1) {
+      throw StateError('Manuel silme için yalnız bir yanıt seçin.');
+    }
+    final secim = yanitSecimi.entries.single;
+    final kayit = hamYanitlar.singleWhere(
+      (y) => y['Id'] == secim.key && y['KaynakSurum'] == secim.value,
+    );
+    final id = kayit['GoogleYanitId']?.toString() ?? '';
+    if (id.isEmpty) throw StateError('Seçilen Google yanıt kimliği eksik.');
+    return id;
+  }
+
+  Future<void> _seciliGoogleFormdaAc() async {
+    await _kontrol();
+    _tekSeciliGoogleYanitId();
+    final googleFormId = form?['GoogleFormId']?.toString() ?? '';
+    if (!RegExp(r'^[a-zA-Z0-9_-]{10,300}$').hasMatch(googleFormId)) {
+      throw StateError('Google Form kimliği geçersiz. Form açılmadı.');
+    }
+    final uri = Uri.https('docs.google.com', '/forms/d/$googleFormId/edit');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      throw StateError('Google Forms düzenleme ekranı açılamadı.');
+    }
+    sonuc = 'Google Forms açıldı. Yanıtlar > Bireysel bölümünde '
+        'seçtiğiniz yanıtın öğrenci, gönderim zamanı ve cevaplarını '
+        'kontrol ederek yalnız o yanıtı silin. '
+        'Ardından uygulamaya dönüp silinmeyi doğrulayın.';
+  }
+
+  Future<void> _seciliSilinmeyiDogrula() async {
+    await _kontrol();
+    final id = _tekSeciliGoogleYanitId();
+    final secim = yanitSecimi.entries.single;
+    final satir = yanitSatirlari.singleWhere(
+      (r) => r['yanitId'] == secim.key &&
+          r['kaynakSurum'] == secim.value,
+    );
+    if (!await _onay(
+      'Google’da silinmeyi doğrula',
+      'Seçili yanıt: ${satir['OkulNo']} • ${satir['Ad']} ${satir['Soyad']}\n'
+          'Gönderim: ${_tarihYaz(satir['gonderimZamani'] as String?)}\n\n'
+          'Bu yanıtı Google Forms üzerinden sildiyseniz devam edin. '
+          'Uygulama yalnız bu yanıtın artık Google’da bulunmadığını '
+          'kontrol edecek. Aynı öğrencinin diğer yanıtları korunacak.',
+    )) return;
+    if (!mounted) return;
+    await _kontrol();
+    if (_tekSeciliGoogleYanitId() != id) {
+      throw StateError('Yanıt seçimi değişti. Hiçbir kayıt temizlenmedi.');
+    }
+    final plan = await fs.topluSilmePlani(
+      fb!,
+      formId,
+      sadeceKaydedilenler: false,
+      seciliYanitIdleri: {secim.key},
+    );
+    if (plan.toplam != 1 ||
+        plan.googleYanitIdleri.length != 1 ||
+        plan.googleYanitIdleri.single != id) {
+      throw StateError('Yanıt eşleştirmesi kesin değil. Hiçbir kayıt temizlenmedi.');
+    }
+    final token = await _token();
+    await fs.topluSilmeYanitiSil(
+      fb!,
+      plan,
+      id,
+      googleSil: (formId, responseId) =>
+          google.googleSilinmesiniDogrula(token, formId, responseId),
+    );
+    await _kontrol();
+    await _yukle();
+    this.plan = null;
+    sonuc = 'Yalnız seçili yanıtın Google’da silindiği doğrulandı. '
+        'Uygulamadaki ham verileri temizlendi; diğer yanıtlar korundu.';
   }
 
   Future<void> _tercihDuzenle(Map<String, dynamic> row) async {
@@ -2897,6 +2978,20 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                 ikincil: true,
                 renk: const Color(0xffd92737),
               ),
+              if (yanitSecimi.length == 1) ...[
+                _buton(
+                  'Google Form’da Aç',
+                  Icons.open_in_new,
+                  _seciliGoogleFormdaAc,
+                  ikincil: true,
+                ),
+                _buton(
+                  'Google’da Silinmeyi Doğrula',
+                  Icons.verified_outlined,
+                  _seciliSilinmeyiDogrula,
+                  ikincil: true,
+                ),
+              ],
             ] else ...[
               _buton('Yanıtları Getir', Icons.refresh, _yanitAl),
               _buton(

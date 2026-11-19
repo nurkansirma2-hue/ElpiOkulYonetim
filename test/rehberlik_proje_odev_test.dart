@@ -27,6 +27,19 @@ class _ProjeYanitTestGoogle extends BilgiToplamaGoogleService {
   final hatali = <String>{};
   final silinenFormlar = <int>[];
   final hataliFormlar = <int>{};
+  final manuelDogrulanan = <String>[];
+  final manuelMevcut = <String>{};
+  @override
+  Future<void> googleSilinmesiniDogrula(
+    String token,
+    String formId,
+    String responseId,
+  ) async {
+    if (manuelMevcut.contains(responseId)) {
+      throw StateError('Yanıt Google’da hâlâ mevcut.');
+    }
+    manuelDogrulanan.add(responseId);
+  }
   @override
   Future<void> formuSil(
     BireyselBilgiToplamaService yerel,
@@ -941,6 +954,8 @@ void main() {
     await tester.longPress(ilk);
     await bekle();
     expect(find.text('Toplu Onayla (1)'), findsOneWidget);
+    expect(find.text('Google Form’da Aç'), findsOneWidget);
+    expect(find.text('Google’da Silinmeyi Doğrula'), findsOneWidget);
     await tester.tap(find.text('Toplu Onayla (1)'));
     await bekle();
     await tester.tap(find.text('Onayla').last);
@@ -963,6 +978,8 @@ void main() {
     await tester.tap(find.text('Tümünü seç (1/2)'));
     await bekle();
     expect(find.text('Toplu Sil (2)'), findsOneWidget);
+    expect(find.text('Google Form’da Aç'), findsNothing);
+    expect(find.text('Google’da Silinmeyi Doğrula'), findsNothing);
     await tester.tap(find.text('Toplu Sil (2)'));
     await bekle();
     expect(find.text('Seçili yanıtları sil'), findsOneWidget);
