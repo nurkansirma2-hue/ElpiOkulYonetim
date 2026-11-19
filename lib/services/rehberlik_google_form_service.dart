@@ -462,6 +462,33 @@ class RehberlikGoogleFormService {
     return adres;
   }
 
+  /// Tam liste dışında kalan eski kimlik için bağımsız yokluk kontrolü.
+  /// 404 yokluğa, 200 hâlâ mevcut olduğuna işaret eder; diğer durumlar hata.
+  Future<bool> yanitGoogledaYokMu({
+    required String erisimBelirteci,
+    required String googleFormId,
+    required String responseId,
+  }) async {
+    if (erisimBelirteci.isEmpty || googleFormId.isEmpty || responseId.isEmpty) {
+      throw const FormatException('Google doğrulama kimlikleri eksik.');
+    }
+    final response = await _get(
+      Uri.parse(
+        '$_kok/${Uri.encodeComponent(googleFormId)}/responses/${Uri.encodeComponent(responseId)}',
+      ),
+      headers: {
+        'Authorization': 'Bearer $erisimBelirteci',
+        'Cache-Control': 'no-cache',
+      },
+    );
+    if (response.statusCode == 404) return true;
+    if (response.statusCode == 200) return false;
+    throw StateError(
+      'Google yanıtının yokluğu doğrulanamadı (HTTP ${response.statusCode}). '
+      'Yerel kayıtlar korundu.',
+    );
+  }
+
   /// Yanıtlar RAM'de kalır; Google cevapları ön onay olmadan SQLite'a
   /// yazılmaz. Sayfalama tüm sonuçlar bitene kadar devam eder.
   Future<List<Map<String, dynamic>>> yanitlariGetir({

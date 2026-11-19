@@ -1035,6 +1035,102 @@ void main() {
       client.close();
     }
   });
+  test('tam listede silinen yanıt ayrı GET 404 ile temizlenir; diğeri korunur', () async {
+    await al(yanit(id: 'r-eski'));
+    await al(yanit(id: 'r-yeni'));
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/responses/r-eski')) {
+        return http.Response('{}', 404);
+      }
+      expect(request.url.path, '/v1/forms/google-form/responses');
+      return http.Response(
+        jsonEncode({'responses': [yanit(id: 'r-yeni')]}),
+        200,
+      );
+    });
+    try {
+      await service.googleYanitlariniAl(
+        b, formId,
+        erisimBelirteci: 'token',
+        google: RehberlikGoogleFormService(client: client),
+      );
+      expect(
+        (await service.yanitlar(b, formId))
+            .map((y) => y['GoogleYanitId']).toList(),
+        ['r-yeni'],
+      );
+      final eski = await db.query(
+        'BilgiToplamaYanit',
+        where: 'GoogleYanitId=?',
+        whereArgs: ['r-eski'],
+      );
+      expect(eski, isNotEmpty);
+      expect(
+        (jsonDecode(eski.first['HamYanit'] as String)
+            as Map)['_yerelTemizlendi'],
+        true,
+      );
+    } finally {
+      client.close();
+    }
+  });
+
+  test('tam listede eksik olsa bile tekli GET 200 ise kayıt korunur', () async {
+    await al(yanit(id: 'r-eski'));
+    await al(yanit(id: 'r-yeni'));
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/responses/r-eski')) {
+        return http.Response('{}', 200);
+      }
+      return http.Response(
+        jsonEncode({'responses': [yanit(id: 'r-yeni')]}), 200,
+      );
+    });
+    try {
+      await service.googleYanitlariniAl(
+        b, formId,
+        erisimBelirteci: 'token',
+        google: RehberlikGoogleFormService(client: client),
+      );
+      expect((await service.yanitlar(b, formId)), hasLength(2));
+    } finally {
+      client.close();
+    }
+  });
+
+  test('Google tekli yokluk kontrolü 403 ise eski yanıtlar korunur', () async {
+    await al(yanit(id: 'r-eski'));
+    await al(yanit(id: 'r-yeni'));
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/responses/r-eski')) {
+        return http.Response('{}', 403);
+      }
+      return http.Response(
+        jsonEncode({'responses': [yanit(id: 'r-yeni')]}), 200,
+      );
+    });
+    try {
+      await expectLater(
+        service.googleYanitlariniAl(
+          b, formId,
+          erisimBelirteci: 'token',
+          google: RehberlikGoogleFormService(client: client),
+        ),
+        throwsStateError,
+      );
+      expect((await service.yanitlar(b, formId)), hasLength(2));
+    } finally {
+      client.close();
+    }
+  });
+
+  test('kısmi yanitlariKaydet çağrısı diğer yanıtları silmez', () async {
+    await al(yanit(id: 'r-eski'));
+    await al(yanit(id: 'r-yeni'));
+    await service.yanitlariKaydet(b, formId, [yanit(id: 'r-yeni')]);
+    expect((await service.yanitlar(b, formId)), hasLength(2));
+  });
+
   test(
     'Google yanıtları mevcut istemci üzerinden alınır, token saklanmaz',
     () async {

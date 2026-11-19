@@ -749,11 +749,53 @@ class BireyselBilgiToplamaService {
     }
     final istemci = google ?? RehberlikGoogleFormService();
     try {
+      final googleFormId = f['GoogleFormId'] as String;
+      // Sayfalama eksiksiz bitmeden hiçbir yerel kayıt temizlenmez.
       final cevaplar = await istemci.yanitlariGetir(
         erisimBelirteci: erisimBelirteci,
-        googleFormId: f['GoogleFormId'] as String,
+        googleFormId: googleFormId,
       );
-      return await yanitlariKaydet(b, formId, cevaplar);
+      final canliKimlikler = <String>{
+        for (final y in cevaplar)
+          if (y['responseId'] is String) y['responseId'] as String,
+      };
+      if (canliKimlikler.length != cevaplar.length) {
+        throw const FormatException(
+          'Google yanıt listesinde tekrarlı veya eksik kimlik var. '
+          'Yerel kayıtlar korunuyor.',
+        );
+      }
+      final yerelKimlikler = await _islem(b, (tx) async {
+        final guncelForm = await _form(tx, b, formId);
+        if (guncelForm['GoogleFormId'] != googleFormId) {
+          throw StateError('Google form bağlantısı değişti; işlem durduruldu.');
+        }
+        final rows = await tx.query(
+          'BilgiToplamaYanit',
+          columns: ['GoogleYanitId'],
+          where: 'FormId=?',
+          whereArgs: [formId],
+        );
+        return rows.map((y) => y['GoogleYanitId'] as String).toSet();
+      });
+      final dogrulananSilinenler = <String>{};
+      for (final id in yerelKimlikler.difference(canliKimlikler)) {
+        // Tam listede yokluk tek başına yeterli görülmez; tekli GET 404 ister.
+        if (await istemci.yanitGoogledaYokMu(
+          erisimBelirteci: erisimBelirteci,
+          googleFormId: googleFormId,
+          responseId: id,
+        )) {
+          dogrulananSilinenler.add(id);
+        }
+      }
+      return await yanitlariKaydet(
+        b,
+        formId,
+        cevaplar,
+        beklenenGoogleFormId: googleFormId,
+        dogrulananSilinenler: dogrulananSilinenler,
+      );
     } finally {
       if (google == null) istemci.dispose();
     }
@@ -762,11 +804,19 @@ class BireyselBilgiToplamaService {
   Future<List<int>> yanitlariKaydet(
     BilgiToplamaOturumu b,
     int formId,
-    List<Map<String, dynamic>> yanitlar,
-  ) {
+    List<Map<String, dynamic>> yanitlar, {
+    String? beklenenGoogleFormId,
+    Set<String> dogrulananSilinenler = const {},
+  }) {
     final kopya = jsonDecode(jsonEncode(yanitlar)) as List;
     return _islem(b, (tx) async {
       final f = await _form(tx, b, formId);
+      if (beklenenGoogleFormId != null &&
+          f['GoogleFormId'] != beklenenGoogleFormId) {
+        throw StateError(
+          'Google form bağlantısı değişti. Yerel yanıtlar korunuyor.',
+        );
+      }
       final bekleyen = await tx.query(
         'UygulamaAyarlari',
         where: 'Anahtar=?',
@@ -860,6 +910,36 @@ class BireyselBilgiToplamaService {
             'OlusturmaTarihi': _simdi(),
           }),
         );
+      }
+      // Bu liste yalnız Google'dan eksiksiz okunan ve ayrıca tekli GET 404
+      // ile yokluğu doğrulanan kimlikler içindir. Parçalı importlar temizlemez.
+      if (dogrulananSilinenler.isNotEmpty) {
+        if (beklenenGoogleFormId == null) {
+          throw StateError(
+            'Tam Google listesi doğrulanmadan yerel silme yapılamaz.',
+          );
+        }
+        final gelenKimlikler = <String>{
+          for (final raw in kopya)
+            (raw as Map)['responseId'] as String,
+        };
+        if (dogrulananSilinenler.any(gelenKimlikler.contains)) {
+          throw StateError(
+            'Google üzerinde bulunan yanıt temizlenemez.',
+          );
+        }
+        final rows = await tx.query(
+          'BilgiToplamaYanit',
+          columns: ['GoogleYanitId'],
+          where: 'FormId=?',
+          whereArgs: [formId],
+        );
+        final yerel = rows.map((y) => y['GoogleYanitId'] as String).toSet();
+        for (final id in dogrulananSilinenler.intersection(yerel)) {
+          if (!await _silinmis(tx, formId, id)) {
+            await _hamYanitiTemizle(tx, b, formId, id);
+          }
+        }
       }
       return List.unmodifiable(sonuc);
     });
