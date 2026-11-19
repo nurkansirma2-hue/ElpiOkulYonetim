@@ -731,6 +731,23 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       };
     }).toList();
     satirlar.sort((a, b) {
+      final aNo = a['ogrenciAnahtari'] as String;
+      final bNo = b['ogrenciAnahtari'] as String;
+      final aSayi = int.tryParse(aNo);
+      final bSayi = int.tryParse(bNo);
+      // Okul numarası sayısal artan; tanınmayan numaralar sonda.
+      if (aSayi != null && bSayi != null) {
+        final noKarsilastirma = aSayi.compareTo(bSayi);
+        if (noKarsilastirma != 0) return noKarsilastirma;
+      } else if (aSayi != null) {
+        return -1;
+      } else if (bSayi != null) {
+        return 1;
+      } else {
+        final noKarsilastirma = aNo.compareTo(bNo);
+        if (noKarsilastirma != 0) return noKarsilastirma;
+      }
+      // Aynı öğrencinin yanıtları en yeniden eskiye sıralanır.
       final x = a['gorunumZamani'] as DateTime?;
       final y = b['gorunumZamani'] as DateTime?;
       if (x == null) return y == null ? 0 : 1;
