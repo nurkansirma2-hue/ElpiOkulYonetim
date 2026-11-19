@@ -83,7 +83,7 @@ void main() {
             }), 200);
           case 'okulYanitKimlikTani':
             diagnoseCount++;
-            expect(body['parameters'], ['f1', 'r1', null]);
+            expect(body['parameters'], ['f1', 'r1', null, null]);
             return http.Response(jsonEncode({
               'done': true,
               'response': {'result': {

@@ -43,7 +43,7 @@ function okulYanitSil(formId, responseId) {
 }
 
 /** Yalnız salt okunur tanı: hiçbir yanıt kimliği, cevap veya kişisel bilgi döndürmez. */
-function okulYanitKimlikTani(formId, responseId, restCreateTime) {
+function okulYanitKimlikTani(formId, responseId, restCreateTime, restAnswerValues) {
   if (typeof formId !== 'string' || !/^[a-zA-Z0-9_-]{1,300}$/.test(formId) ||
       typeof responseId !== 'string' || !/^[a-zA-Z0-9_-]{1,300}$/.test(responseId)) {
     throw new Error('Form veya yanıt kimliği geçersiz.');
@@ -64,14 +64,58 @@ function okulYanitKimlikTani(formId, responseId, restCreateTime) {
       }).length;
     }
   }
+  // Soru kimliği dönüşümü henüz kanıtlanmadığından bu yalnız aday analizidir.
+  // Cevaplar hiçbir zaman döndürülmez, loglanmaz veya silme hedefi yapılmaz.
+  let contentMatches = null;
+  let timeAndContentMatches = null;
+  const expected = okulYanitDegerleri_(restAnswerValues);
+  if (expected !== null) {
+    let matchesByContent = 0;
+    let matchesByBoth = 0;
+    for (const r of responses) {
+      const actual = okulYanitDegerleri_(
+        r.getItemResponses().map(item => item.getResponse())
+      );
+      if (actual === null || JSON.stringify(actual) !== JSON.stringify(expected)) continue;
+      matchesByContent++;
+      if (typeof restCreateTime === 'string' && restCreateTime.length <= 80) {
+        const date = new Date(restCreateTime);
+        const timestamp = r.getTimestamp();
+        if (!isNaN(date.getTime()) && timestamp &&
+            typeof timestamp.getTime === 'function' &&
+            timestamp.getTime() === date.getTime()) matchesByBoth++;
+      }
+    }
+    contentMatches = matchesByContent;
+    timeAndContentMatches = matchesByBoth;
+  }
   return {
     protocol: 'okul-yanit-kimlik-tani/v1',
     formId: formId,
     scriptCount: responses.length,
     exactMatches: matches,
     timestampMatches: timestampMatches,
+    contentMatches: contentMatches,
+    timeAndContentMatches: timeAndContentMatches,
+    // İçerik ve zaman eşleşmesi tek başına kesin kimlik kanıtı değildir.
     mappingVerified: matches === 1
   };
+}
+
+/** Sadece salt okunur aday sayımı için; hassas cevapları dışarı vermez. */
+function okulYanitDegerleri_(raw) {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 100) return null;
+  const values = [];
+  for (const value of raw) {
+    const parts = Array.isArray(value) ? value : [value];
+    if (parts.length === 0 || parts.length > 100) return null;
+    for (const part of parts) {
+      if (typeof part !== 'string' || part.length > 5000) return null;
+      values.push(part);
+    }
+  }
+  if (values.length === 0 || values.length > 100) return null;
+  return values.sort();
 }
 
 /** Kurulum doğrulaması: hiçbir formu veya yanıtı değiştirmez. */

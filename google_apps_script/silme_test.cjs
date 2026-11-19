@@ -19,6 +19,9 @@ function setup(ids, fail = false, options = {}) {
           return (options.emptyList ? [] : state.ids).map((id, i) => ({
             getId: () => id,
             getTimestamp: () => new Date(options.timestamps?.[i] || '2026-11-18T18:26:00.000Z'),
+            getItemResponses: () => (options.answers?.[i] || ['default answer']).map(value => ({
+              getResponse: () => value,
+            })),
           }));
         },
         getResponse: id => {
@@ -146,6 +149,33 @@ test('aynı gönderim zamanına sahip iki yanıt kesin eşleşme sayılmaz', () 
   const result = ctx.okulYanitKimlikTani('f1', 'rest-r1', '2026-11-18T18:26:00.000Z');
   assert.equal(result.timestampMatches, 2);
   assert.equal(result.mappingVerified, false);
+  assert.deepEqual(state.deleted, []);
+});
+
+test('soru metni içeriği tek adaya uysa dahi silme yapılmaz', () => {
+  const { state, ctx } = setup(['script-1', 'script-2'], false, {
+    answers: [['A', 'B'], ['C', 'D']],
+    timestamps: ['2026-11-18T18:26:00Z', '2026-11-18T18:30:00Z'],
+  });
+  const result = ctx.okulYanitKimlikTani(
+    'f1', 'rest-1', '2026-11-18T18:26:00Z', ['B', 'A']
+  );
+  assert.equal(result.contentMatches, 1);
+  assert.equal(result.timeAndContentMatches, 1);
+  assert.equal(result.mappingVerified, false);
+  assert.deepEqual(state.deleted, []);
+  assert.deepEqual(state.ids, ['script-1', 'script-2']);
+});
+
+test('aynı cevapların tekrarında ve desteklenmeyen veri türünde güvenli tanı', () => {
+  const { state, ctx } = setup(['script-1', 'script-2'], false, {
+    answers: [['same'], ['same']],
+  });
+  const duplicate = ctx.okulYanitKimlikTani('f1', 'rest-1', null, ['same']);
+  assert.equal(duplicate.contentMatches, 2);
+  assert.equal(duplicate.mappingVerified, false);
+  const invalid = ctx.okulYanitKimlikTani('f1', 'rest-1', null, [42]);
+  assert.equal(invalid.contentMatches, null);
   assert.deepEqual(state.deleted, []);
 });
 

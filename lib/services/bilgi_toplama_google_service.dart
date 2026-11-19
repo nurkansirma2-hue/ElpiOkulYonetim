@@ -825,6 +825,33 @@ class BilgiToplamaGoogleService {
         try {
           final hedef = jsonDecode(utf8.decode(kontrol.bodyBytes));
           final olusturulma = hedef is Map ? hedef['createTime'] : null;
+          // REST cevabındaki metinsel değerler yalnız aynı Google hesabındaki
+          // salt okunur aday analizi için iletilir. Kalıcı kayda/loga eklenmez.
+          List<String>? beklenenCevaplar;
+          if (hedef is Map && hedef['answers'] is Map) {
+            final cevaplar = <String>[];
+            var uygun = true;
+            for (final answer in (hedef['answers'] as Map).values) {
+              final textAnswers = answer is Map ? answer['textAnswers'] : null;
+              final values = textAnswers is Map ? textAnswers['answers'] : null;
+              if (values is! List || values.isEmpty) {
+                uygun = false;
+                break;
+              }
+              for (final value in values) {
+                final text = value is Map ? value['value'] : null;
+                if (text is! String || text.length > 5000) {
+                  uygun = false;
+                  break;
+                }
+                cevaplar.add(text);
+              }
+              if (!uygun || cevaplar.length > 100) break;
+            }
+            if (uygun && cevaplar.isNotEmpty && cevaplar.length <= 100) {
+              beklenenCevaplar = cevaplar;
+            }
+          }
           final taniData = _oku(
             await _client
                 .post(
@@ -832,7 +859,7 @@ class BilgiToplamaGoogleService {
                   headers: headers,
                   body: jsonEncode({
                     'function': 'okulYanitKimlikTani',
-                    'parameters': [formId, responseId, olusturulma],
+                    'parameters': [formId, responseId, olusturulma, beklenenCevaplar],
                     'devMode': false,
                   }),
                 )
@@ -855,7 +882,11 @@ class BilgiToplamaGoogleService {
                 '${sonuc['exactMatches']}.'
                 ' Aynı gönderim zamanındaki aday sayısı: '
                 '${sonuc['timestampMatches'] is int ? sonuc['timestampMatches'] : 'belirlenemedi'}.'
-                ' Saat eşleşmesi silme yetkisi vermez.';
+                ' Cevap içeriği eşleşen aday: '
+                '${sonuc['contentMatches'] is int ? sonuc['contentMatches'] : 'belirlenemedi'}.'
+                ' Saat ve cevap birlikte eşleşen aday: '
+                '${sonuc['timeAndContentMatches'] is int ? sonuc['timeAndContentMatches'] : 'belirlenemedi'}.'
+                ' Bu eşleşmeler silme yetkisi vermez.';
           }
         } catch (_) {
           // Tanı başarısızsa asıl silme hatasını gizleme.
