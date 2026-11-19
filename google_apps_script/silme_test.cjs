@@ -44,7 +44,7 @@ function setup(ids, fail = false, options = {}) {
 test('yalnız hedef yanıt silinir; tekrar deneme diğer yanıtı silmez', () => {
   const { state, ctx } = setup(['r1', 'r2']);
   assert.equal(ctx.okulYanitSil('f1', 'r1').absent, true);
-  assert.throws(() => ctx.okulYanitSil('f1', 'r1'), /doğrulanamadı/);
+  assert.throws(() => ctx.okulYanitSil('f1', 'r1'), /eşleşmedi/);
   assert.deepEqual(state.ids, ['r2']);
   assert.deepEqual(state.deleted, ['r1']);
   assert.equal(state.released, 2);
@@ -92,7 +92,7 @@ test('silme uygulanmamışsa başarı döndürmez', () => {
 
 test('başlangıçta bulunamayan kimlik absent başarısı üretmez', () => {
   const { state, ctx } = setup(['r2']);
-  assert.throws(() => ctx.okulYanitSil('f1', 'r1'), /doğrulanamadı/);
+  assert.throws(() => ctx.okulYanitSil('f1', 'r1'), /eşleşmedi/);
   assert.deepEqual(state.deleted, []);
   assert.deepEqual(state.ids, ['r2']);
 });
