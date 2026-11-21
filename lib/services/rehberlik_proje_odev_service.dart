@@ -97,6 +97,44 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
     p.remove('sonucGecmisi');
   }, yazma: true);
 
+  /// Yalnız bu proje formunun hedef listesinden pasif öğrenciyi çıkarır.
+  /// Öğrenci, sınıf kaydı, Google Form ve ham yanıtlar değiştirilmez.
+  Future<void> projePasifOgrenciyiCikar(
+    BireyselRehberlikBaglami b,
+    int atama,
+    int formId,
+    int ogrenciId,
+  ) => _projeIslem(b, atama, formId, (tx, a, p) async {
+    final hedefler = (p['ogrenciler'] as List).cast<int>().toList();
+    if (!hedefler.contains(ogrenciId)) {
+      throw StateError('Öğrenci artık bu proje listesinde bulunmuyor.');
+    }
+    final kayit = await tx.rawQuery(
+      '''SELECT o.Aktif AS OgrenciAktif, k.Aktif AS KayitAktif
+         FROM Ogrenci o LEFT JOIN OgrenciSinifKayit k
+           ON k.OgrenciId=o.OgrenciId
+           AND k.SinifSubeId=? AND k.EgitimOgretimYili=?
+         WHERE o.OgrenciId=?''',
+      [a['SinifSubeId'], a['EgitimOgretimYili'], ogrenciId],
+    );
+    if (kayit.length != 1 ||
+        (kayit.single['OgrenciAktif'] == 1 &&
+            kayit.single['KayitAktif'] == 1)) {
+      throw StateError('Yalnız pasif öğrenci proje listesinden çıkarılabilir.');
+    }
+    hedefler.remove(ogrenciId);
+    p['ogrenciler'] = hedefler;
+    (p['onaylar'] as Map).remove('$ogrenciId');
+    (p['dagitim'] as Map).remove('$ogrenciId');
+    (p['dagitimImzalari'] as Map?)?.remove('$ogrenciId');
+    // Kalan öğrenciler için dahi eski dağıtımı otomatik kesin sayma.
+    p['dagitimOnayli'] = false;
+    p['sonuclandi'] = false;
+    p.remove('sonucImzasi');
+    p.remove('sonucTarihi');
+    // Eski sonuç geçmişi denetim izi olarak korunur.
+  }, yazma: true);
+
   Future<List<Map<String, Object?>>> projeDersleri(
     BireyselRehberlikBaglami b,
     int atama,
@@ -397,10 +435,13 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
             .toList();
         if (opts.length == 1) oid = opts.single['ogrenciId'] as int?;
       }
-      if (oid == null || !(p['ogrenciler'] as List).contains(oid)) {
+      if (oid == null) {
         belirsiz.add(y);
         continue;
       }
+      // Bilerek proje kapsamından çıkarılan öğrencinin Google'da kalan
+      // yanıtı "kimliği belirsiz" sayılıp yeniden listeye alınmamalı.
+      if (!(p['ogrenciler'] as List).contains(oid)) continue;
       (eslesen[oid] ??= []).add(y);
     }
     final dersler = Map<String, dynamic>.from(p['dersler'] as Map);
