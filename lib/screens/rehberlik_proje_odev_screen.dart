@@ -1697,8 +1697,11 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     await _yukle();
   }
 
-  bool get atamaListesiHazir =>
-      dagitimGuncel && analiz?['sonuclandi'] == true;
+  // Atama listesi onaylı, güncel dağıtım ile açılır. Öğretmenlere
+  // kesin sonuç mesajı ise ayrıca proje sonuçlandırılınca hazırlanır.
+  bool get atamaListesiHazir => dagitimGuncel;
+  bool get kesinSonucHazir =>
+      atamaListesiHazir && analiz?['sonuclandi'] == true;
 
   List<Map<String, dynamic>> get _atananDersler =>
       ((analiz?['dersler'] as List?) ?? const [])
@@ -1730,8 +1733,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
 
   Future<void> _ogretmenGrupMesaji(String kisiId) async {
     await _kontrol();
-    if (!atamaListesiHazir) {
-      throw StateError('Önce kesin ders dağıtımını sonuçlandırın.');
+    if (!kesinSonucHazir) {
+      throw StateError('Öğretmen mesajı için önce proje seçimini sonuçlandırın.');
     }
     final id = formId;
     final grup = _ogretmenMesajGruplari.singleWhere(
@@ -1825,8 +1828,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   Widget _atamaListesi() {
     if (!atamaListesiHazir) {
       return _bilgi(
-        'Atama listesi yalnız güncel dağıtım onaylanıp proje seçimi '
-        'sonuçlandırıldıktan sonra açılır.',
+        'Atama listesi için önce güncel ders dağıtımını onaylayın.',
         uyari: true,
       );
     }
@@ -1834,7 +1836,12 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     final atanan = rows.where((r) => r['dersId'] != null).length;
     final dersler = _atananDersler;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _bilgi('Ders atamaları kesinleştirildi • $atanan öğrenci yerleştirildi.'),
+      _bilgi(
+        kesinSonucHazir
+            ? 'Proje seçimi sonuçlandırıldı • $atanan öğrenci yerleştirildi.'
+            : 'Ders dağıtımı onaylandı • $atanan öğrenci yerleştirildi. '
+              'Proje henüz sonuçlandırılmadı.',
+      ),
       _istatistik([
         ('Toplam', analiz!['toplam'] as int, Colors.blue),
         ('Atanan', atanan, Colors.green),
@@ -1862,7 +1869,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                 Icons.send_outlined,
                 () => _ogretmeneSonucMesaji(ders['dersId'] as int),
                 ikincil: true,
-                etkin: (ders['ogretmenler'] as List).isNotEmpty,
+                etkin: kesinSonucHazir &&
+                    (ders['ogretmenler'] as List).isNotEmpty,
               ),
               _buton(
                 'Listeyi Aç',
@@ -1883,14 +1891,18 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
 
   Widget _ogretmenMesajlari() {
     if (!atamaListesiHazir) {
-      return _bilgi('Önce kesin dağıtımı sonuçlandırın.', uyari: true);
+      return _bilgi('Önce güncel ders dağıtımını onaylayın.', uyari: true);
     }
     final gruplar = _ogretmenMesajGruplari;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _bilgi(
-        'Atama listesine göre öğretmen bazlı mesaj taslakları hazırlanabilir. '
-        'Aynı öğretmenin farklı dersleri tek mesajda birleştirilir. '
-        'Gönderim yalnız Mesajlaşma ekranındaki onayla yapılır.',
+        kesinSonucHazir
+            ? 'Atama listesine göre öğretmen bazlı mesaj taslakları hazırlanabilir. '
+              'Aynı öğretmenin farklı dersleri tek mesajda birleştirilir. '
+              'Gönderim yalnız Mesajlaşma ekranındaki onayla yapılır.'
+            : 'Ders dağıtımı onaylandı, proje henüz sonuçlandırılmadı. '
+              'Öğretmenlere kesin sonuç mesajı hazırlamak için proje seçimini sonuçlandırın.',
+        uyari: !kesinSonucHazir,
       ),
       _istatistik([
         ('Öğretmen', gruplar.length, Colors.green),
@@ -1920,6 +1932,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               'Mesajı Düzenle / Gönderime Geç',
               Icons.send_outlined,
               () => _ogretmenGrupMesaji(grup['kisiId'] as String),
+              etkin: kesinSonucHazir,
             ),
         ]),
       if (gruplar.isEmpty)
@@ -3851,7 +3864,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                               () => _formAc(p, islem: 1, seciliSekme: 1),
                               ikincil: true,
                             ),
-                            if (p['sonuclandi'] == true)
+                            if (p['dagitimOnayli'] == true)
                               _buton(
                                 'Atama Listesi',
                                 Icons.groups_outlined,
