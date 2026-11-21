@@ -350,6 +350,81 @@ void main() {
   }
 
   test(
+    'Sıfırla yalnız seçili proje formunu temizler ve yeniden yanıt alabilir',
+    () async {
+      await tamDagitim();
+      final digerForm = await projeFormu(dersler);
+      final qs = await fs.sorular(fb, digerForm);
+      await fs.googleBagla(fb, digerForm, 'google-diger-form', {
+        for (final q in qs) q['AlanAnahtari'] as String: 'd${q['Id']}',
+      });
+      final ogrenciler = await db.query('Ogrenci');
+      final once = (await s.projeTalepleri(b, 1))
+          .singleWhere((p) => p['formId'] == fid);
+      expect(once['onaylar'], isNotEmpty);
+      expect(once['dagitimOnayli'], true);
+
+      final birinciYanit = await fs.yanitlar(fb, fid);
+      final onizleme = await fs.onizle(
+        fb,
+        birinciYanit.first['Id'] as int,
+      );
+      await fs.yanitiSil(fb, onizleme);
+      final silmeIsaretleri = await db.query(
+        'UygulamaAyarlari',
+        where: 'Anahtar LIKE ?',
+        whereArgs: ['bilgi_toplama_silinen:$fid:%'],
+      );
+      expect(silmeIsaretleri, isNotEmpty);
+
+      await s.projeYanitlariniSifirla(b, 1, fid);
+      expect(await db.query('BilgiToplamaYanit',
+          where: 'FormId=?', whereArgs: [fid]), isEmpty);
+      expect(await db.query('BilgiToplamaEsleme',
+          where: 'FormId=?', whereArgs: [fid]), isEmpty);
+      expect(await db.query('UygulamaAyarlari',
+          where: 'Anahtar LIKE ?',
+          whereArgs: ['bilgi_toplama_silinen:$fid:%']), isEmpty);
+      final yeni = (await s.projeTalepleri(b, 1))
+          .singleWhere((p) => p['formId'] == fid);
+      expect(yeni['onaylar'], isEmpty);
+      expect(yeni['dagitim'], isEmpty);
+      expect(yeni['dagitimOnayli'], isNull);
+      expect(yeni['sonuclandi'], isNull);
+      expect(await db.query('Ogrenci'), ogrenciler);
+      expect((await s.projeTalepleri(b, 1)).length, 2);
+      expect(await fs.yanitlar(fb, digerForm), isEmpty);
+
+      // Eski silme işareti yeni içe aktarmayı engellememeli.
+      await yanit(1, [1, 2, 3]);
+      expect(await fs.yanitlar(fb, fid), hasLength(1));
+      expect((await s.projeTercihleri(b, 1, fid)).first['hatalar'], isEmpty);
+    },
+  );
+
+  test(
+    'Sıfırla öğrenciye aktarılmış bilgiyi ve yerel yanıtları korur',
+    () async {
+      await yanit(1, [1, 2, 3]);
+      final r = (await fs.yanitlar(fb, fid)).single;
+      final soru = (await fs.sorular(fb, fid)).first;
+      // Aktarılmış kayıt, ham yanıtın silinmesine engel olmalıdır.
+      await db.insert('OgrenciEkBilgiDeger', {
+        'YanitId': r['Id'],
+        'FormId': fid,
+        'SoruId': soru['Id'],
+        'OgrenciId': 1,
+        'Deger': 'Korunacak bilgi',
+      });
+      await expectLater(
+        s.projeYanitlariniSifirla(b, 1, fid),
+        throwsStateError,
+      );
+      expect(await fs.yanitlar(fb, fid), hasLength(1));
+      expect(await db.query('OgrenciEkBilgiDeger'), hasLength(1));
+    },
+  );
+  test(
     'değerlendirme gerçek tercih sayılarını ve eksik/hatalı öğrencileri analiz eder',
     () async {
       await yanit(1, [1, 2, 3]);
