@@ -502,6 +502,71 @@ void main() {
       );
     },
   );
+  testWidgets(
+    'aynı öğretmenin iki proje dersinin öğrencileri tek mesajda hazırlanır',
+    (tester) async {
+      const kisi = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+      await tamDagitim();
+      await ogretmenEkle(kisi, 1);
+      await s.projeDersOgretmeniEsle(b, 1, fid, 2, {kisi});
+      final an = await s.projeAnalizi(b, 1, fid);
+      await s.projeSonuclandir(b, 1, fid, an['imza'] as String);
+      final g = _ProjeYanitTestGoogle();
+      addTearDown(g.dispose);
+      Future<void> bekle() async {
+        for (var i = 0; i < 70; i++) {
+          await tester.runAsync(() async {
+            await Future<void>.delayed(const Duration(milliseconds: 30));
+          });
+          await tester.pump();
+          if (find.byType(LinearProgressIndicator).evaluate().isEmpty) break;
+        }
+        await tester.pumpAndSettle();
+      }
+      await tester.pumpWidget(MaterialApp(
+        home: RehberlikProjeOdevScreen(
+          service: s,
+          baglam: b,
+          formService: fs,
+          google: g,
+          hesapBagla: () async => 'test',
+          atama: const {
+            'RehberlikAtamaId': 1,
+            'SinifSubeId': 1,
+            'SinifKodu': '9/C',
+            'EgitimOgretimYili': '2026/2027',
+          },
+        ),
+      ));
+      await bekle();
+      await tester.tap(find.text('Sınıfın proje dersleri'));
+      await bekle();
+      await tester.tap(find.text('İşlem değiştir'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Atama Listesi').last);
+      await bekle();
+      final ac = find.text('Tüm Öğretmenlere Mesaj Hazırla');
+      await tester.ensureVisible(ac);
+      await tester.tap(ac);
+      await bekle();
+      expect(find.text('2 ders • 2 öğrenci'), findsOneWidget);
+      final hazirla = find.text('Mesajı Düzenle / Gönderime Geç');
+      await tester.ensureVisible(hazirla);
+      await tester.tap(hazirla);
+      await bekle();
+      final mesaj = tester.widget<MesajlasmaScreen>(
+        find.byType(MesajlasmaScreen),
+      );
+      expect(mesaj.baslangicOgretmenIdleri, {kisi});
+      expect(mesaj.baslangicKisiBaglari, {'Ogretmen:$kisi:1'});
+      expect(mesaj.baslangicMetni, contains('101 - Öğrenci1'));
+      expect(mesaj.baslangicMetni, contains('102 - Öğrenci2'));
+      expect(mesaj.baslangicMetni, isNot(contains('103 - Öğrenci3')));
+      expect(mesaj.yalnizGonderimOnayi, true);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    },
+  );
   test('bekleyen öğretmen mesajı değişen sonuçta gönderilmez', () async {
     const kisi = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     await tamDagitim();
