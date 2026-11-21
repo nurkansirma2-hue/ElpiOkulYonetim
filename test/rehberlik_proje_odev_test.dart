@@ -1520,7 +1520,7 @@ void main() {
     await bekle();
     await tester.tap(find.text('Proje'));
     await bekle();
-    await tester.tap(find.text('Yanıtlar'));
+    await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-1')));
     await bekle();
     expect(find.text('Ortak form ayrıntısı / yanıt düzenleme'), findsNothing);
     expect(find.byType(Checkbox), findsNothing);
@@ -1637,7 +1637,7 @@ void main() {
       await bekle();
       await tester.tap(find.text('Sınıfın proje dersleri'));
       await bekle();
-      await tester.tap(find.text('Yanıtlar'));
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-1')));
       await bekle();
       expect(find.text('Yanıt alımı açık'), findsOneWidget);
       expect(find.text('Yanıtları Kapat'), findsOneWidget);
@@ -1696,7 +1696,7 @@ void main() {
     await bekle();
     await tester.tap(find.text('Proje'));
     await bekle();
-    await tester.tap(find.text('Yanıtlar'));
+    await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-1')));
     await bekle();
     expect(find.textContaining('101 • Öğrenci1'), findsNWidgets(2));
     expect(find.textContaining('Kaydedilmiş yanıtlar görüntüleniyor'), findsOneWidget);
@@ -1762,7 +1762,7 @@ void main() {
       await bekle();
       await tester.tap(find.text('Proje'));
       await bekle();
-      await tester.tap(find.text('Yanıtlar'));
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-1')));
       await bekle();
       expect(
         find.byKey(const ValueKey('google-yanit-native-old')),
@@ -1884,7 +1884,7 @@ void main() {
     await bekle();
     await tester.tap(find.text('Sınıfın proje dersleri'));
     await bekle();
-    await tester.tap(find.text('Değerlendirme'));
+    await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
     await bekle();
     expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
     await capture('400-5-degerlendirme-hazir');
@@ -2111,7 +2111,7 @@ void main() {
       expect(find.byKey(const ValueKey('proje-ana-dagitim')), findsNothing);
       await tester.tap(find.text('Proje'));
       await bekle();
-      await tester.tap(find.text('Değerlendirme'));
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
       await bekle();
       expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
       await tester.tap(find.byTooltip('Proje taleplerine dön'));
@@ -2288,7 +2288,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await capture('${width.toInt()}-5-yanitlar');
-      await tester.tap(find.text('Yanıtlar'));
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-1')));
       await bekle();
       expect(find.text('Ortak form ayrıntısı / yanıt düzenleme'), findsNothing);
       await capture('${width.toInt()}-5-yanit-listesi');
@@ -2299,9 +2299,9 @@ void main() {
       await capture('${width.toInt()}-5-yanit-secimi');
       await tester.tap(find.byTooltip('Seçimi kapat'));
       await bekle();
-      await tester.tap(find.text('Özet'));
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-0')));
       await bekle();
-      await tester.tap(find.text('Değerlendirme'));
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
       await bekle();
       expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
       await capture('${width.toInt()}-5-degerlendirme');
@@ -2313,32 +2313,29 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('Vazgeç'));
       await bekle();
-      await tester.tap(find.text('Özet'));
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-0')));
       await bekle();
       for (final (i, ad) in [
-        (0, 'Form Talebi'),
+        (0, 'Özet'),
+        (1, 'Yanıtlar'),
         (2, 'Onay / Düzenleme'),
         (3, 'Dağıtım / Yazdırma'),
-        (7, 'Bilgilendirme'),
       ]) {
-        await tester.tap(find.byTooltip('İşlem değiştir'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text(ad).last);
-        await tester.pumpAndSettle();
+        final sekme = find.byKey(ValueKey('proje-ust-sekme-$i'));
+        await tester.ensureVisible(sekme);
+        await tester.tap(sekme);
+        await bekle();
         expect(tester.takeException(), isNull);
         if (i == 2) {
-          // Genel Bilgi Formu'na gereksiz Düzenle geçişi kaldırıldı;
-          // proje tercihlerinin yenileme ve onay işlemleri korunur.
           expect(find.text('Düzenle'), findsNothing);
           expect(find.text('Google Yanıtlarını Yenile'), findsOneWidget);
           expect(find.text('Geçerlileri seç'), findsOneWidget);
           expect(find.textContaining('Onayla ('), findsWidgets);
         }
-        await capture('${width.toInt()}-${i + 4}-$ad');
-        if (i == 7) {
-          expect(find.text('Öğrenci Bildirimi'), findsOneWidget);
-          expect(find.text('Ders Öğretmeni Bildirimi'), findsOneWidget);
+        if (i == 3) {
+          expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
         }
+        await capture('${width.toInt()}-${i + 4}-$ad');
       }
       await tester.tap(find.byTooltip('Proje taleplerine dön'));
       await tester.pumpAndSettle();
