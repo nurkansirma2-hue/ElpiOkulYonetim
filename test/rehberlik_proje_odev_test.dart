@@ -574,6 +574,71 @@ void main() {
     },
   );
 
+  testWidgets(
+    'beş aşamada sonuçlandırılan atama öğrenci mesajına doğru dersle aktarılır',
+    (tester) async {
+      await tamDagitim();
+      final an = await s.projeAnalizi(b, 1, fid);
+      await s.projeSonuclandir(b, 1, fid, an['imza'] as String);
+      final g = _ProjeYanitTestGoogle();
+      addTearDown(g.dispose);
+      Future<void> bekle() async {
+        for (var i = 0; i < 70; i++) {
+          await tester.runAsync(() async {
+            await Future<void>.delayed(const Duration(milliseconds: 25));
+          });
+          await tester.pump();
+          if (find.byType(LinearProgressIndicator).evaluate().isEmpty) break;
+        }
+        await tester.pumpAndSettle();
+      }
+      await tester.pumpWidget(MaterialApp(
+        home: RehberlikProjeOdevScreen(
+          service: s,
+          baglam: b,
+          formService: fs,
+          google: g,
+          hesapBagla: () async => 'test',
+          atama: const {
+            'RehberlikAtamaId': 1,
+            'SinifSubeId': 1,
+            'SinifKodu': '9/C',
+            'EgitimOgretimYili': '2026/2027',
+          },
+        ),
+      ));
+      await bekle();
+      await tester.tap(find.text('Sınıfın proje dersleri'));
+      await bekle();
+      await tester.tap(find.text('İşlem değiştir'));
+      await tester.pumpAndSettle();
+      expect(find.text('Form Talebi'), findsWidgets);
+      expect(find.text('Onay / Düzenleme'), findsOneWidget);
+      expect(find.text('Dağıtım / Yazdırma'), findsOneWidget);
+      expect(find.text('Bilgilendirme'), findsOneWidget);
+      await tester.tap(find.text('Bilgilendirme').last);
+      await bekle();
+      expect(find.text('Öğrenci Bildirimi'), findsOneWidget);
+      expect(find.text('Ders Öğretmeni Bildirimi'), findsOneWidget);
+      final hazirla = find.text('Öğrenci Mesajını Hazırla').first;
+      await tester.ensureVisible(hazirla);
+      await tester.tap(hazirla);
+      await bekle();
+      final ekran = tester.widget<MesajlasmaScreen>(
+        find.byType(MesajlasmaScreen),
+      );
+      expect(ekran.baslangicOgrenciIdleri, {1, 2, 3});
+      expect(ekran.izinliOgrenciIdleri, {1, 2, 3});
+      expect(ekran.ogrenciMesajlari?[1], contains('Ders'));
+      expect(ekran.ogrenciMesajlari?[1], contains('101'));
+      expect(ekran.ogrenciMesajlari?[1], isNot(contains('Öğrenci2')));
+      expect(ekran.ogrenciMesajlari?[2], contains('102'));
+      expect(ekran.gonderimOnizlemesiniAc, true);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    },
+  );
+
   testWidgets('Formlarım aktif ve arşiv kayıtlarını ayrı gösterir', (tester) async {
     await fs.yayinDurumuKaydet(fb, fid, 'google-proje-form', false);
     await fs.isaretle(fb, fid, 'Arşivle');
