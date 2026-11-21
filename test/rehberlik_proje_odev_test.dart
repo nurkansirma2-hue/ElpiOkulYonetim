@@ -502,6 +502,41 @@ void main() {
       );
     },
   );
+  testWidgets('Formlarım aktif ve arşiv kayıtlarını ayrı gösterir', (tester) async {
+    await fs.yayinDurumuKaydet(fb, fid, 'google-proje-form', false);
+    await fs.isaretle(fb, fid, 'Arşivle');
+    await tester.pumpWidget(MaterialApp(
+      home: RehberlikProjeOdevScreen(
+        service: s,
+        baglam: b,
+        formService: fs,
+        google: _ProjeYanitTestGoogle(),
+        hesapBagla: () async => 'test',
+        atama: const {
+          'RehberlikAtamaId': 1,
+          'SinifSubeId': 1,
+          'SinifKodu': '9/C',
+          'EgitimOgretimYili': '2026/2027',
+        },
+      ),
+    ));
+    for (var i = 0; i < 50; i++) {
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      });
+      await tester.pump();
+      if (find.byType(LinearProgressIndicator).evaluate().isEmpty) break;
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('Aktif Formlar'), findsOneWidget);
+    expect(find.text('Arşiv'), findsOneWidget);
+    expect(find.byKey(ValueKey('proje-form-$fid')), findsNothing);
+    await tester.tap(find.text('Arşiv'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(ValueKey('proje-form-$fid')), findsOneWidget);
+    expect(find.text('Yanıtlar kapalı'), findsOneWidget);
+  });
+
   testWidgets(
     'aynı öğretmenin iki proje dersinin öğrencileri tek mesajda hazırlanır',
     (tester) async {
