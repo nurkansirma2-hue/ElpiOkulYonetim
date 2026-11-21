@@ -779,15 +779,28 @@ class BireyselBilgiToplamaService {
         return rows.map((y) => y['GoogleYanitId'] as String).toSet();
       });
       final dogrulananSilinenler = <String>{};
+      final uyusmayanKimlikler = <String>[];
       for (final id in yerelKimlikler.difference(canliKimlikler)) {
-        // Tam listede yokluk tek başına yeterli görülmez; tekli GET 404 ister.
+        // Silme kanıtı yalnız tam REST listesi + tekli GET 404'tür.
+        // Tekli GET 200 dönüyorsa eksik listeyi eksiksiz kabul etme:
+        // "Google yanıtları alındı" diyerek hayalet kaydı saklama.
         if (await istemci.yanitGoogledaYokMu(
           erisimBelirteci: erisimBelirteci,
           googleFormId: googleFormId,
           responseId: id,
         )) {
           dogrulananSilinenler.add(id);
+        } else {
+          uyusmayanKimlikler.add(id);
         }
+      }
+      if (uyusmayanKimlikler.isNotEmpty) {
+        throw StateError(
+          'Google yanıt listesi ile tekli Google yanıt sorgusu '
+          'uyuşmuyor (${uyusmayanKimlikler.length} kayıt). '
+          'SQLite sıfırlanmadı; öğrenci yanıtları korundu. '
+          'Google Forms yanıt kaynağı kontrol edilmeli.',
+        );
       }
       return await yanitlariKaydet(
         b,
