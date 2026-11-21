@@ -796,6 +796,7 @@ void main() {
         where: 'FormId=? AND GoogleYanitId=?',
         whereArgs: [fid, 'silinen'],
       );
+      expect(await fs.yanitlar(fb, fid), hasLength(1));
       final rows = await s.projeTercihleri(b, 1, fid);
       expect(rows.first['hatalar'], isEmpty);
       expect(rows.first['bekliyor'], false);
