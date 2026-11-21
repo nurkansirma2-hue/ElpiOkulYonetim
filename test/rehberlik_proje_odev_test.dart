@@ -629,7 +629,7 @@ void main() {
       );
       expect(ekran.baslangicOgrenciIdleri, {1, 2, 3});
       expect(ekran.izinliOgrenciIdleri, {1, 2, 3});
-      expect(ekran.ogrenciMesajlari?[1], contains('Ders'));
+      expect(ekran.ogrenciMesajlari?[1], contains('proje ödevi'));
       expect(ekran.ogrenciMesajlari?[1], contains('101'));
       expect(ekran.ogrenciMesajlari?[1], isNot(contains('Öğrenci2')));
       expect(ekran.ogrenciMesajlari?[2], contains('102'));
