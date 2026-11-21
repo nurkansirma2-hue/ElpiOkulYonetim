@@ -15,6 +15,7 @@ import 'package:elpi_okul_yonetim/core/calisma_modu.dart';
 import 'package:elpi_okul_yonetim/database/local_database.dart';
 import 'package:elpi_okul_yonetim/services/bireysel_bilgi_toplama_service.dart';
 import 'package:elpi_okul_yonetim/services/rehberlik_google_form_service.dart';
+import 'package:elpi_okul_yonetim/services/bilgi_toplama_google_service.dart';
 import 'support/windows_memory_database.dart';
 
 void main() {
@@ -173,6 +174,243 @@ void main() {
     await service.googleBagla(b, formId, 'google-form', ids);
   });
   tearDown(() async => LocalDatabase.instance.close());
+
+  group('Google ve SQLite ortak silme regresyonu', () {
+    late Map<String, Map<String, dynamic>> uzak;
+    late List<String> silinen;
+    late Set<String> hata;
+    late http.Client client;
+    late BilgiToplamaGoogleService google;
+    Future<void> Function()? kurulumda;
+    var devam = true;
+
+    setUp(() async {
+      uzak = {};
+      silinen = [];
+      hata = {};
+      kurulumda = null;
+      devam = true;
+      await service.silmeBaglantisiniKaydet(b, 'test-deployment');
+      http.Response json(Object value, [int status = 200]) =>
+          http.Response.bytes(utf8.encode(jsonEncode(value)), status);
+      client = MockClient((r) async {
+        if (r.url.host == 'script.googleapis.com') {
+          final body = jsonDecode(r.body) as Map;
+          if (body['function'] == 'okulYanitSilKurulumKontrol') {
+            if (kurulumda != null) await kurulumda!();
+            return json({
+              'done': true,
+              'response': {
+                'result': {
+                  'protocol': 'okul-yanit-sil/v1',
+                  'ready': true,
+                  'implementation': 'exact-response-2026-11-19',
+                },
+              },
+            });
+          }
+          if (body['function'] == 'okulYanitKimlikTani') {
+            return json({
+              'done': true,
+              'response': {
+                'result': {
+                  'protocol': 'okul-yanit-kimlik-tani/v1',
+                  'formId': 'google-form',
+                  'scriptCount': uzak.length,
+                  'exactMatches': 0,
+                },
+              },
+            });
+          }
+          expect(body['function'], 'okulYanitSil');
+          final rid = body['parameters'][1] as String;
+          if (hata.contains(rid)) {
+            return json({
+              'done': true,
+              'error': {'code': 3},
+            });
+          }
+          silinen.add(rid);
+          uzak.remove(rid);
+          return json({
+            'done': true,
+            'response': {
+              'result': {
+                'protocol': 'okul-yanit-sil/v1',
+                'formId': 'google-form',
+                'responseId': rid,
+                'deleted': true,
+                'absent': true,
+              },
+            },
+          });
+        }
+        if (r.url.path.endsWith('/responses')) {
+          return json({'responses': uzak.values.toList()});
+        }
+        if (r.url.path.contains('/responses/')) {
+          final raw = uzak[r.url.pathSegments.last];
+          return json(raw ?? {}, raw == null ? 404 : 200);
+        }
+        return json({'formId': 'google-form'});
+      });
+      google = BilgiToplamaGoogleService(client: client);
+    });
+    tearDown(() => client.close());
+
+    Future<void> ekle(
+      String id, {
+      String no = '001',
+      String ad = 'Ad1 Soyad',
+    }) async {
+      final raw = yanit(id: id, no: no, ad: ad);
+      uzak[id] = raw;
+      await al(raw);
+    }
+
+    Future<BilgiToplamaTopluSilmeSonucu> sil(Set<String> ids) async {
+      final rows = await service.yanitlar(b, formId);
+      final plan = await service.topluSilmePlani(
+        b,
+        formId,
+        sadeceKaydedilenler: false,
+        seciliYanitIdleri: rows
+            .where((y) => ids.contains(y['GoogleYanitId']))
+            .map((y) => y['Id'] as int)
+            .toSet(),
+      );
+      return google.yanitlariTopluSil(
+        service,
+        b,
+        plan,
+        'test-token',
+        devamEt: () => devam,
+      );
+    }
+
+    test(
+      'aynı öğrencinin yalnız seçilen yanıtı temizlenir; onaylı bilgiler korunur',
+      () async {
+        await ekle('ilk');
+        final p = await service.onizle(
+          b,
+          (await service.yanitlar(b, formId)).single['Id'] as int,
+        );
+        await service.onayla(b, p);
+        await ekle('son');
+        final ogrenci = await db.query('Ogrenci');
+        final ek = await db.query('OgrenciEkBilgiDeger');
+        final surum = await db.rawQuery('PRAGMA user_version');
+        final sonuc = await sil({'ilk'});
+        expect(sonuc.basarili, 1);
+        expect(sonuc.googleSilinen, 1);
+        expect(sonuc.kalan, 0);
+        expect(silinen, ['ilk']);
+        expect(
+          (await service.yanitlar(b, formId)).single['GoogleYanitId'],
+          'son',
+        );
+        expect(await db.query('Ogrenci'), ogrenci);
+        expect(await db.query('OgrenciEkBilgiDeger'), ek);
+        expect(await db.rawQuery('PRAGMA user_version'), surum);
+        expect(await db.rawQuery('PRAGMA foreign_key_check'), isEmpty);
+      },
+    );
+
+    test('farklı öğrencilerden çoklu seçim bağımsız temizlenir', () async {
+      await ekle('bir');
+      await ekle('iki', no: '002', ad: 'Ad2 Soyad');
+      final sonuc = await sil({'bir', 'iki'});
+      expect(sonuc.basarili, 2);
+      expect(sonuc.googleSilinen, 2);
+      expect(await service.yanitlar(b, formId), isEmpty);
+      expect(silinen.toSet(), {'bir', 'iki'});
+      expect(await db.query('Ogrenci'), hasLength(3));
+    });
+
+    test(
+      'bir kimlik uyuşmazlığı diğer başarılı silmenin sonucunu kaybettirmez',
+      () async {
+        await ekle('bir');
+        await ekle('iki');
+        hata.add('bir');
+        final sonuc = await sil({'bir', 'iki'});
+        expect(sonuc.basarili, 1);
+        expect(sonuc.kalan, 1);
+        expect(sonuc.hatalar, hasLength(1));
+        expect(silinen, ['iki']);
+        expect(
+          (await service.yanitlar(b, formId)).single['GoogleYanitId'],
+          'bir',
+        );
+      },
+    );
+
+    test(
+      'zaten silinmiş yanıt ayrı sayılır ve gecikmiş yenilemeyle geri gelmez',
+      () async {
+        await ekle('ilk');
+        await ekle('son');
+        final eski = uzak.remove('ilk')!;
+        final sonuc = await sil({'ilk'});
+        expect(sonuc.googleSilinen, 0);
+        expect(sonuc.yokluguDogrulanan, 1);
+        expect(silinen, isEmpty);
+        expect(await service.yanitlariKaydet(b, formId, [eski]), isEmpty);
+        expect(
+          (await service.yanitlar(b, formId)).single['GoogleYanitId'],
+          'son',
+        );
+      },
+    );
+
+    test(
+      'seçimden sonra uzak cevap değişirse Google silme çağrısı yapılmaz',
+      () async {
+        await ekle('bir');
+        uzak['bir'] = yanit(id: 'bir', ek: {'anne': 'Değişen cevap'});
+        final sonuc = await sil({'bir'});
+        expect(sonuc.basarili, 0);
+        expect(
+          sonuc.hatalar.single,
+          contains('Google yanıtı seçildikten sonra değişti'),
+        );
+        expect(silinen, isEmpty);
+        expect(await service.yanitlar(b, formId), hasLength(1));
+      },
+    );
+
+    test(
+      'betik kurulumu beklenirken yerel kaynak değişirse silme durur',
+      () async {
+        await ekle('bir');
+        kurulumda = () async {
+          await al(yanit(id: 'bir', ek: {'anne': 'Yeni sürüm'}));
+        };
+        final sonuc = await sil({'bir'});
+        expect(sonuc.basarili, 0);
+        expect(silinen, isEmpty);
+        expect(await service.yanitlar(b, formId), hasLength(1));
+      },
+    );
+
+    test(
+      'betik kurulumu beklenirken seçim iptal edilirse silme durur',
+      () async {
+        await ekle('bir');
+        await ekle('iki');
+        kurulumda = () async {
+          devam = false;
+        };
+        final sonuc = await sil({'bir', 'iki'});
+        expect(sonuc.basarili, 0);
+        expect(sonuc.kalan, 2);
+        expect(sonuc.durdurulan, 1);
+        expect(silinen, isEmpty);
+        expect(await service.yanitlar(b, formId), hasLength(2));
+      },
+    );
+  });
 
   test(
     'aynı taslak isteği ikinci kayıt oluşturmaz farklı içerik sessizce yazılmaz',
@@ -1035,60 +1273,80 @@ void main() {
       client.close();
     }
   });
-  test('tam listede silinen yanıt ayrı GET 404 ile temizlenir; diğeri korunur', () async {
-    await al(yanit(id: 'r-eski'));
-    await al(yanit(id: 'r-yeni'));
-    final client = MockClient((request) async {
-      if (request.url.path.endsWith('/responses/r-eski')) {
-        return http.Response('{}', 404);
+  test(
+    'tam listede silinen yanıt ayrı GET 404 ile temizlenir; diğeri korunur',
+    () async {
+      await al(yanit(id: 'r-eski'));
+      await al(yanit(id: 'r-yeni'));
+      final client = MockClient((request) async {
+        if (request.url.path == '/v1/forms/google-form') {
+          return http.Response('{"formId":"google-form"}', 200);
+        }
+        if (request.url.path.endsWith('/responses/r-eski')) {
+          return http.Response('{}', 404);
+        }
+        expect(request.url.path, '/v1/forms/google-form/responses');
+        return http.Response(
+          jsonEncode({
+            'responses': [yanit(id: 'r-yeni')],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      try {
+        await service.googleYanitlariniAl(
+          b,
+          formId,
+          erisimBelirteci: 'token',
+          google: RehberlikGoogleFormService(client: client),
+        );
+        expect(
+          (await service.yanitlar(
+            b,
+            formId,
+          )).map((y) => y['GoogleYanitId']).toList(),
+          ['r-yeni'],
+        );
+        final eski = await db.query(
+          'BilgiToplamaYanit',
+          where: 'GoogleYanitId=?',
+          whereArgs: ['r-eski'],
+        );
+        expect(eski, isNotEmpty);
+        expect(
+          (jsonDecode(eski.first['HamYanit'] as String)
+              as Map)['_yerelTemizlendi'],
+          true,
+        );
+      } finally {
+        client.close();
       }
-      expect(request.url.path, '/v1/forms/google-form/responses');
-      return http.Response(
-        jsonEncode({'responses': [yanit(id: 'r-yeni')]}),
-        200,
-      );
-    });
-    try {
-      await service.googleYanitlariniAl(
-        b, formId,
-        erisimBelirteci: 'token',
-        google: RehberlikGoogleFormService(client: client),
-      );
-      expect(
-        (await service.yanitlar(b, formId))
-            .map((y) => y['GoogleYanitId']).toList(),
-        ['r-yeni'],
-      );
-      final eski = await db.query(
-        'BilgiToplamaYanit',
-        where: 'GoogleYanitId=?',
-        whereArgs: ['r-eski'],
-      );
-      expect(eski, isNotEmpty);
-      expect(
-        (jsonDecode(eski.first['HamYanit'] as String)
-            as Map)['_yerelTemizlendi'],
-        true,
-      );
-    } finally {
-      client.close();
-    }
-  });
+    },
+  );
 
   test('tam listede eksik olsa bile tekli GET 200 ise kayıt korunur', () async {
     await al(yanit(id: 'r-eski'));
     await al(yanit(id: 'r-yeni'));
     final client = MockClient((request) async {
+      if (request.url.path == '/v1/forms/google-form') {
+        return http.Response('{"formId":"google-form"}', 200);
+      }
       if (request.url.path.endsWith('/responses/r-eski')) {
-        return http.Response('{}', 200);
+        return http.Response('{"responseId":"r-eski"}', 200);
       }
       return http.Response(
-        jsonEncode({'responses': [yanit(id: 'r-yeni')]}), 200,
+        jsonEncode({
+          'responses': [yanit(id: 'r-yeni')],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
     try {
       await service.googleYanitlariniAl(
-        b, formId,
+        b,
+        formId,
         erisimBelirteci: 'token',
         google: RehberlikGoogleFormService(client: client),
       );
@@ -1102,17 +1360,25 @@ void main() {
     await al(yanit(id: 'r-eski'));
     await al(yanit(id: 'r-yeni'));
     final client = MockClient((request) async {
+      if (request.url.path == '/v1/forms/google-form') {
+        return http.Response('{"formId":"google-form"}', 200);
+      }
       if (request.url.path.endsWith('/responses/r-eski')) {
         return http.Response('{}', 403);
       }
       return http.Response(
-        jsonEncode({'responses': [yanit(id: 'r-yeni')]}), 200,
+        jsonEncode({
+          'responses': [yanit(id: 'r-yeni')],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
     try {
       await expectLater(
         service.googleYanitlariniAl(
-          b, formId,
+          b,
+          formId,
           erisimBelirteci: 'token',
           google: RehberlikGoogleFormService(client: client),
         ),
@@ -1160,4 +1426,63 @@ void main() {
       client.close();
     },
   );
+  for (final returnedId in ['canonical-other', null]) {
+    test(
+      'GET 200 kimliği $returnedId olsa da yeni yanıt alınır, eski ve onaylı veri korunur',
+      () async {
+        final oldId = await al(yanit(id: 'r-eski'));
+        await service.onayla(b, await service.onizle(b, oldId));
+        final students = await db.query('Ogrenci');
+        final extras = await db.query('OgrenciEkBilgiDeger');
+        final client = MockClient((request) async {
+          expect(request.method, 'GET');
+          if (request.url.path == '/v1/forms/google-form') {
+            return http.Response('{"formId":"google-form"}', 200);
+          }
+          if (request.url.path.endsWith('/responses/r-eski')) {
+            return http.Response(
+              jsonEncode({if (returnedId != null) 'responseId': returnedId}),
+              200,
+            );
+          }
+          expect(request.url.path, '/v1/forms/google-form/responses');
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode({
+                'responses': [yanit(id: 'r-yeni')],
+              }),
+            ),
+            200,
+          );
+        });
+        addTearDown(client.close);
+        final received = await service.googleYanitlariniAl(
+          b,
+          formId,
+          erisimBelirteci: 'test',
+          google: RehberlikGoogleFormService(client: client),
+        );
+        expect(received, hasLength(1));
+        expect(
+          (await service.yanitlar(
+            b,
+            formId,
+          )).map((r) => r['GoogleYanitId']).toSet(),
+          {'r-eski', 'r-yeni'},
+        );
+        expect(await db.query('Ogrenci'), students);
+        expect(await db.query('OgrenciEkBilgiDeger'), extras);
+        final old = (await db.query(
+          'BilgiToplamaYanit',
+          where: 'Id=?',
+          whereArgs: [oldId],
+        )).single;
+        expect(old['Durum'], 'Onaylandi');
+        expect(
+          (jsonDecode(old['HamYanit'] as String) as Map)['_yerelTemizlendi'],
+          isNot(true),
+        );
+      },
+    );
+  }
 }

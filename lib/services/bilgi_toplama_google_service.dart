@@ -1,14 +1,26 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
+
 import 'bireysel_bilgi_toplama_service.dart';
 import 'rehberlik_google_form_service.dart';
 
 /// Genel bilgi formu soruları; rehberlik formunun soru/öğrenci akışını değiştirmez.
 class BilgiToplamaTopluSilmeSonucu {
-  BilgiToplamaTopluSilmeSonucu(this.basarili, this.kalan, List<String> hatalar)
-    : hatalar = List.unmodifiable(hatalar);
+  BilgiToplamaTopluSilmeSonucu(
+    this.basarili,
+    this.kalan,
+    List<String> hatalar, {
+    int? googleSilinen,
+    this.yokluguDogrulanan = 0,
+    this.durdurulan = 0,
+    this.yerelTemizlikTamam = true,
+  }) : googleSilinen = googleSilinen ?? basarili,
+       hatalar = List.unmodifiable(hatalar);
   final int basarili, kalan;
   final List<String> hatalar;
+  final int googleSilinen, yokluguDogrulanan, durdurulan;
+  final bool yerelTemizlikTamam;
 }
 
 class BilgiToplamaGoogleService {
@@ -19,6 +31,7 @@ class BilgiToplamaGoogleService {
   final bool _sahibi;
   static const _kok = 'https://forms.googleapis.com/v1/forms';
   static const silmeScope = 'https://www.googleapis.com/auth/forms';
+  bool get dogrudanYanitOkuma => true;
   void dispose() {
     if (_sahibi) _client.close();
   }
@@ -44,6 +57,19 @@ class BilgiToplamaGoogleService {
       throw const FormatException('Google yanıtı geçersiz.');
     }
     return data;
+  }
+
+  static String _anlikIcerik(Object? veri) {
+    Object? sirala(Object? v) {
+      if (v is Map) {
+        final keys = v.keys.cast<String>().toList()..sort();
+        return {for (final key in keys) key: sirala(v[key])};
+      }
+      if (v is List) return v.map(sirala).toList();
+      return v;
+    }
+
+    return jsonEncode(sirala(veri));
   }
 
   static Map<String, Object?> _item(Map<String, Object?> s) {
@@ -575,6 +601,132 @@ class BilgiToplamaGoogleService {
     );
   }
 
+  Future<Map<String, dynamic>> _betikCagir(
+    String deployment,
+    String token,
+    String function,
+    List<Object?> parameters,
+  ) async {
+    if (!RegExp(r'^[a-zA-Z0-9_-]{10,300}$').hasMatch(deployment)) {
+      throw StateError('Google yanıt bağlantısı kurulumu eksik.');
+    }
+    final data = _oku(
+      await _client
+          .post(
+            Uri.https('script.googleapis.com', '/v1/scripts/$deployment:run'),
+            headers: _headers(token),
+            body: jsonEncode({
+              'function': function,
+              'parameters': parameters,
+              'devMode': false,
+            }),
+          )
+          .timeout(const Duration(seconds: 60)),
+    );
+    final response = data['response'];
+    final result = response is Map ? response['result'] : null;
+    if (data['error'] != null ||
+        data['done'] != true ||
+        result is! Map<String, dynamic>) {
+      throw StateError(
+        'Google yanıt işlemi doğrulanamadı. Yanıtlar korundu. '
+        'Doğrudan yanıt protokolünü içeren Apps Script sürümü ve hesap yetkisi gerekli.',
+      );
+    }
+    return result;
+  }
+
+  static Map<String, dynamic> _dogrudanKayit(
+    Map<String, dynamic> raw,
+    String formId,
+  ) {
+    if (raw['source'] != 'apps-script/v2' ||
+        raw['formId'] != formId ||
+        raw['responseId'] is! String ||
+        !RegExp(
+          r'^[a-zA-Z0-9_-]{1,300}$',
+        ).hasMatch(raw['responseId'] as String) ||
+        raw['submittedTime'] is! String ||
+        DateTime.tryParse(raw['submittedTime'] as String) == null ||
+        raw['answers'] is! List ||
+        jsonEncode(raw).length > 1000000) {
+      throw const FormatException('Doğrudan Google yanıtı geçersiz.');
+    }
+    final seen = <String>{};
+    for (final a in raw['answers'] as List) {
+      if (a is! Map ||
+          a['itemId'] is! String ||
+          (a['itemId'] as String).isEmpty ||
+          !seen.add(a['itemId'] as String) ||
+          a['title'] is! String ||
+          a['values'] is! List ||
+          (a['values'] as List).length > 100 ||
+          (a['values'] as List).any((v) => v is! String || v.length > 10000)) {
+        throw const FormatException('Doğrudan Google cevapları geçersiz.');
+      }
+    }
+    return Map<String, dynamic>.unmodifiable(
+      jsonDecode(jsonEncode(raw)) as Map<String, dynamic>,
+    );
+  }
+
+  /// REST yanıt kimliği ile bağ kurmaz; bu kayıtlar aynı nesnenin getId()
+  /// değeriyle okunur ve silinir. SQLite'a ikinci bir yanıt kopyası yazılmaz.
+  Future<List<Map<String, dynamic>>> googleDogrudanYanitlariOku(
+    String deployment,
+    String token,
+    String googleFormId,
+  ) async {
+    final result = await _betikCagir(deployment, token, 'okulYanitlariOku', [
+      googleFormId,
+    ]);
+    if (result['protocol'] != 'okul-yanitlar/v2' ||
+        result['implementation'] != 'native-response-2026-11-20' ||
+        result['formId'] != googleFormId ||
+        result['complete'] != true ||
+        result['responses'] is! List ||
+        result['count'] != (result['responses'] as List).length ||
+        (result['responses'] as List).length > 5000 ||
+        jsonEncode(result).length > 5000000) {
+      throw StateError(
+        'Google yanıtlarının eksiksiz ve doğru kaynaktan okunduğu doğrulanamadı.',
+      );
+    }
+    final seen = <String>{};
+    final rows = <Map<String, dynamic>>[];
+    for (final raw in result['responses'] as List) {
+      if (raw is! Map<String, dynamic>) {
+        throw const FormatException('Google yanıtı geçersiz.');
+      }
+      final row = _dogrudanKayit(raw, googleFormId);
+      if (!seen.add(row['responseId'] as String)) {
+        throw const FormatException('Google yanıt kimliği tekrarlı.');
+      }
+      rows.add(row);
+    }
+    return List.unmodifiable(rows);
+  }
+
+  Future<List<Map<String, dynamic>>> dogrudanYanitlariAl(
+    BireyselBilgiToplamaService yerel,
+    BilgiToplamaOturumu b,
+    int formId,
+    String token,
+  ) async {
+    final form = await yerel.formGetir(b, formId);
+    final gid = form['GoogleFormId'] as String?;
+    if (gid == null || gid.isEmpty) {
+      throw StateError('Google form bağlantısı eksik.');
+    }
+    final deployment = await yerel.silmeBaglantisi(b);
+    final rows = await googleDogrudanYanitlariOku(deployment, token, gid);
+    if (_anlikIcerik(await yerel.formGetir(b, formId)) != _anlikIcerik(form) ||
+        await yerel.silmeBaglantisi(b) != deployment) {
+      throw StateError('Okuma sırasında form veya Google bağlantısı değişti.');
+    }
+    return rows;
+  }
+
   Future<void> yanitiSil(
     BireyselBilgiToplamaService yerel,
     BilgiToplamaOturumu b,
@@ -582,11 +734,6 @@ class BilgiToplamaGoogleService {
     String token,
   ) async {
     final deploymentId = await yerel.silmeBaglantisi(b);
-    if (!RegExp(r'^[a-zA-Z0-9_-]{10,300}$').hasMatch(deploymentId)) {
-      throw StateError(
-        'Google’dan silme kurulumu eksik. Form ekranındaki Google’dan silme ayarına API dağıtım kimliğini kaydedin.',
-      );
-    }
     await yerel.yanitiGoogleIleSil(
       b,
       p,
@@ -616,38 +763,16 @@ class BilgiToplamaGoogleService {
     String formId,
     String responseId,
   ) async {
-    final headers = {..._headers(token), 'Cache-Control': 'no-cache'};
-    final form = await durum(token, formId);
-    if (form['formId'] != formId) {
-      throw StateError('Google form kimliği uyuşmuyor. Yerel kayıt korundu.');
-    }
-    final yanit = await _client
-        .get(
-          Uri.parse(
-            '$_kok/${Uri.encodeComponent(formId)}/responses/${Uri.encodeComponent(responseId)}',
-          ),
-          headers: headers,
-        )
-        .timeout(const Duration(seconds: 30));
-    if (yanit.statusCode == 200) {
-      throw StateError(
-        'Yanıt Google Forms üzerinde hâlâ mevcut. '
-        'Yalnızca doğru yanıtı Google Forms üzerinden sildikten sonra doğrulayın.',
-      );
-    }
-    if (yanit.statusCode != 404) {
-      throw StateError(
-        'Google yanıtı doğrulanamadı (HTTP ${yanit.statusCode}). Yerel kayıt korundu.',
-      );
-    }
-    final liste = await RehberlikGoogleFormService(client: _client)
-        .yanitlariGetir(
+    final yok = await RehberlikGoogleFormService(client: _client)
+        .yanitGoogledaYokMu(
           erisimBelirteci: token,
           googleFormId: formId,
+          responseId: responseId,
         );
-    if (liste.any((yanit) => yanit['responseId'] == responseId)) {
+    if (!yok) {
       throw StateError(
-        'Yanıt Google Forms listesinde hâlâ mevcut. Yerel kayıt korundu.',
+        'Yanıt Google Forms üzerinde hâlâ mevcut veya yokluğu kesinleşmedi. '
+        'Yerel kayıt korundu.',
       );
     }
   }
@@ -659,24 +784,68 @@ class BilgiToplamaGoogleService {
     String token, {
     bool Function()? devamEt,
     void Function(int tamamlanan, int toplam)? ilerleme,
+    List<Map<String, dynamic>>? dogrudanHedefler,
   }) async {
-    final deploymentId = await yerel.silmeBaglantisi(b);
-    if (!RegExp(r'^[a-zA-Z0-9_-]{10,300}$').hasMatch(deploymentId)) {
-      throw StateError('Google’dan silme kurulumu eksik.');
+    if (dogrudanHedefler != null) {
+      return _dogrudanTopluSil(
+        yerel,
+        b,
+        plan,
+        token,
+        dogrudanHedefler,
+        devamEt: devamEt,
+        ilerleme: ilerleme,
+      );
     }
-    var basarili = 0, denenen = 0;
+    final deploymentId = await yerel.silmeBaglantisi(b);
+    var basarili = 0, denenen = 0, googleSilinen = 0, yokluguDogrulanan = 0;
     final hatalar = <String>[];
     for (final id in plan.googleYanitIdleri) {
       if (devamEt != null && !devamEt()) break;
       try {
+        var silindi = false;
+        final form = await yerel.formGetir(b, plan.formId);
+        final rows = await yerel.yanitlar(b, plan.formId);
+        final hedef = rows.singleWhere((y) => y['GoogleYanitId'] == id);
+        Future<void> hedefKontrol() async {
+          final guncelForm = await yerel.formGetir(b, plan.formId);
+          final guncel = (await yerel.yanitlar(
+            b,
+            plan.formId,
+          )).where((y) => y['GoogleYanitId'] == id).toList();
+          if (_anlikIcerik(form) != _anlikIcerik(guncelForm) ||
+              guncel.length != 1 ||
+              _anlikIcerik(hedef) != _anlikIcerik(guncel.single)) {
+            throw StateError(
+              'Silme sırasında form veya kaynak yanıt değişti. Yanıt korundu.',
+            );
+          }
+        }
+
         await yerel.topluSilmeYanitiSil(
           b,
           plan,
           id,
-          googleSil: (fid, rid) =>
-              _googleYanitiSil(deploymentId, token, fid, rid),
+          googleSil: (fid, rid) async {
+            silindi = await _googleYanitiSil(
+              deploymentId,
+              token,
+              fid,
+              rid,
+              devamEt: devamEt,
+              beklenenYanit:
+                  jsonDecode(hedef['HamYanit'] as String)
+                      as Map<String, dynamic>,
+              hedefKontrol: hedefKontrol,
+            );
+          },
         );
         basarili++;
+        if (silindi) {
+          googleSilinen++;
+        } else {
+          yokluguDogrulanan++;
+        }
       } catch (e) {
         hatalar.add('Yanıt ${denenen + 1}: $e');
       }
@@ -687,6 +856,104 @@ class BilgiToplamaGoogleService {
       basarili,
       plan.toplam - basarili,
       hatalar,
+      googleSilinen: googleSilinen,
+      yokluguDogrulanan: yokluguDogrulanan,
+      durdurulan: plan.toplam - denenen,
+    );
+  }
+
+  Future<BilgiToplamaTopluSilmeSonucu> _dogrudanTopluSil(
+    BireyselBilgiToplamaService yerel,
+    BilgiToplamaOturumu b,
+    BilgiToplamaSilmePlani plan,
+    String token,
+    List<Map<String, dynamic>> hedefler, {
+    bool Function()? devamEt,
+    void Function(int, int)? ilerleme,
+  }) async {
+    final snapshots = hedefler
+        .map((r) => _dogrudanKayit(r, plan.googleFormId))
+        .toList();
+    if (snapshots.isEmpty ||
+        snapshots.map((r) => r['responseId']).toSet().length !=
+            snapshots.length) {
+      throw StateError(
+        'Silinecek Google yanıtlarını seçin; tekrarlı hedef kullanılamaz.',
+      );
+    }
+    final form = await yerel.formGetir(b, plan.formId);
+    final deployment = await yerel.silmeBaglantisi(b);
+    Future<void> kapsam() async {
+      if (devamEt != null && !devamEt()) {
+        throw StateError('Silme durduruldu veya seçim değişti.');
+      }
+      if (form['GoogleFormId'] != plan.googleFormId ||
+          _anlikIcerik(form) !=
+              _anlikIcerik(await yerel.formGetir(b, plan.formId)) ||
+          deployment != await yerel.silmeBaglantisi(b)) {
+        throw StateError('Form, hesap kapsamı veya Google bağlantısı değişti.');
+      }
+      if (devamEt != null && !devamEt()) {
+        throw StateError('Silme durduruldu veya seçim değişti.');
+      }
+    }
+
+    var silinen = 0, yok = 0, denenen = 0;
+    final hatalar = <String>[];
+    for (final snapshot in snapshots) {
+      if (devamEt != null && !devamEt()) break;
+      try {
+        await kapsam();
+        final deleted = await _googleYanitiSil(
+          deployment,
+          token,
+          plan.googleFormId,
+          snapshot['responseId'] as String,
+          beklenenYanit: snapshot,
+          devamEt: devamEt,
+          hedefKontrol: kapsam,
+        );
+        if (deleted) {
+          silinen++;
+        } else {
+          yok++;
+        }
+      } catch (_) {
+        hatalar.add('Yanıt ${denenen + 1}: Silme kesinleşmedi; kayıt korundu.');
+      }
+      denenen++;
+      ilerleme?.call(denenen, snapshots.length);
+    }
+    var temizlik = true;
+    if (silinen + yok > 0) {
+      try {
+        // Native kimlik REST kimliğiymiş gibi sorgulanmaz! Yerel temizliği
+        // yalnız kendi REST kimliğiyle tam liste + GET 404 kanıtı yapar.
+        if (_anlikIcerik(form) !=
+            _anlikIcerik(await yerel.formGetir(b, plan.formId))) {
+          throw StateError('Form kapsamı değişti.');
+        }
+        await yerel.googleYanitlariniAl(
+          b,
+          plan.formId,
+          erisimBelirteci: token,
+          google: RehberlikGoogleFormService(client: _client),
+        );
+      } catch (_) {
+        temizlik = false;
+        hatalar.add(
+          'Google silme sonucu alındı; yerel eşitleme doğrulanamadı. Ham kayıtlar korunuyor.',
+        );
+      }
+    }
+    return BilgiToplamaTopluSilmeSonucu(
+      silinen + yok,
+      snapshots.length - silinen - yok,
+      hatalar,
+      googleSilinen: silinen,
+      yokluguDogrulanan: yok,
+      durdurulan: snapshots.length - denenen,
+      yerelTemizlikTamam: temizlik,
     );
   }
 
@@ -810,28 +1077,112 @@ class BilgiToplamaGoogleService {
     );
   }
 
-  Future<void> _googleYanitiSil(
+  Future<bool> _googleYanitiSil(
     String deploymentId,
     String token,
     String formId,
-    String responseId,
-  ) async {
+    String responseId, {
+    bool Function()? devamEt,
+    Map<String, dynamic>? beklenenYanit,
+    Future<void> Function()? hedefKontrol,
+  }) async {
+    if (beklenenYanit?['source'] == 'apps-script/v2') {
+      return _dogrudanGoogleYanitiSil(
+        deploymentId,
+        token,
+        formId,
+        responseId,
+        beklenenYanit!,
+        devamEt: devamEt,
+        hedefKontrol: hedefKontrol,
+      );
+    }
+    void secimiDogrula() {
+      if (devamEt != null && !devamEt()) {
+        throw StateError(
+          'Silme durduruldu veya yanıt seçimi değişti. Yerel kayıt korundu.',
+        );
+      }
+    }
+
+    secimiDogrula();
     final headers = _headers(token);
-    // devMode:false yayımlanmış sürümü çalıştırır; editördeki kodu değil.
-    // Eski dağıtımla gerçek Google yanıtı silinmeye çalışılmaz.
-    final kurulum = _oku(
+    Future<void> kaynakKontrol() async {
+      secimiDogrula();
+      if (hedefKontrol != null) await hedefKontrol();
+      final mevcut = _oku(
+        await _client
+            .get(
+              Uri.parse(
+                '$_kok/${Uri.encodeComponent(formId)}/responses/${Uri.encodeComponent(responseId)}',
+              ),
+              headers: {...headers, 'Cache-Control': 'no-cache'},
+            )
+            .timeout(const Duration(seconds: 30)),
+      );
+      if (mevcut['responseId'] != responseId ||
+          (mevcut['formId'] != null && mevcut['formId'] != formId)) {
+        throw StateError(
+          'Silme hedefinin Google kimliği doğrulanamadı. Yanıt korundu.',
+        );
+      }
+      if (beklenenYanit != null) {
+        const alanlar = [
+          'responseId',
+          'answers',
+          'createTime',
+          'lastSubmittedTime',
+          'respondentEmail',
+        ];
+        if (mevcut['responseId'] != responseId ||
+            (mevcut['formId'] != null && mevcut['formId'] != formId) ||
+            alanlar.any(
+              (key) =>
+                  _anlikIcerik(mevcut[key]) != _anlikIcerik(beklenenYanit[key]),
+            )) {
+          throw StateError(
+            'Google yanıtı seçildikten sonra değişti. Silme durduruldu.',
+          );
+        }
+      }
+      secimiDogrula();
+    }
+
+    final google = RehberlikGoogleFormService(client: _client);
+    Future<bool> yokMu() => google.yanitGoogledaYokMu(
+      erisimBelirteci: token,
+      googleFormId: formId,
+      responseId: responseId,
+    );
+    // Daha önce silinen yanıt için Apps Script veya dağıtım gerekmez.
+    if (await yokMu()) {
+      if (hedefKontrol != null) await hedefKontrol();
+      secimiDogrula();
+      return false;
+    }
+    await kaynakKontrol();
+    if (!RegExp(r'^[a-zA-Z0-9_-]{10,300}$').hasMatch(deploymentId)) {
+      throw StateError('Google’dan silme kurulumu eksik. Yanıt korundu.');
+    }
+    Future<Map<String, dynamic>> betik(
+      String function,
+      List<Object?> parameters,
+    ) async => _oku(
       await _client
           .post(
             Uri.https('script.googleapis.com', '/v1/scripts/$deploymentId:run'),
             headers: headers,
             body: jsonEncode({
-              'function': 'okulYanitSilKurulumKontrol',
-              'parameters': [],
+              'function': function,
+              'parameters': parameters,
               'devMode': false,
             }),
           )
           .timeout(const Duration(seconds: 60)),
     );
+
+    // Yalnız yayımlanmış ve bilinen kesin kimlik protokolü kullanılabilir.
+    final kurulum = await betik('okulYanitSilKurulumKontrol', []);
     final kurulumYanit = kurulum['response'];
     final kurulumSonuc = kurulumYanit is Map ? kurulumYanit['result'] : null;
     if (kurulum['error'] != null ||
@@ -842,117 +1193,60 @@ class BilgiToplamaGoogleService {
         kurulumSonuc['implementation'] != 'exact-response-2026-11-19') {
       throw StateError(
         'Google yanıt silme betiğinin yayımlanmış sürümü güncel değil veya doğrulanamadı. '
-        'Apps Script > Dağıt > Dağıtımları yönet bölümünden mevcut API dağıtımını '
-        'Code.gs dosyasının güncel sürümüne yükseltin. Yerel yanıt korundu.',
+        'Yerel yanıt korundu.',
       );
     }
-    final data = _oku(
-      await _client
-          .post(
-            Uri.https('script.googleapis.com', '/v1/scripts/$deploymentId:run'),
-            headers: headers,
-            body: jsonEncode({
-              'function': 'okulYanitSil',
-              'parameters': [formId, responseId],
-              'devMode': false,
-            }),
-          )
-          .timeout(const Duration(seconds: 60)),
-    );
-    if (data['error'] != null) {
-      // Önceki deneme Google'da silip yerel kayıt aşamasında kesilmiş olabilir.
-      // Betik hatası tek başına yokluk kanıtı değildir; erişilebilir form + 404 ister.
-      await durum(token, formId);
-      final kontrol = await _client
-          .get(
-            Uri.parse(
-              '$_kok/${Uri.encodeComponent(formId)}/responses/${Uri.encodeComponent(responseId)}',
-            ),
-            headers: {...headers, 'Cache-Control': 'no-cache'},
-          )
-          .timeout(const Duration(seconds: 30));
-      if (kontrol.statusCode == 404) {
-        await durum(token, formId);
-        return;
-      }
-      // Hedef REST yanıtı hâlâ mevcutsa salt okunur kimlik karşılaştırması
-      // yap. Kimlikler/cevaplar loglanmaz, başka bir yanıt seçilmez.
-      String tani = '';
-      if (kontrol.statusCode == 200) {
-        try {
-          final hedef = jsonDecode(utf8.decode(kontrol.bodyBytes));
-          final olusturulma = hedef is Map ? hedef['createTime'] : null;
-          // REST cevabındaki metinsel değerler yalnız aynı Google hesabındaki
-          // salt okunur aday analizi için iletilir. Kalıcı kayda/loga eklenmez.
-          List<String>? beklenenCevaplar;
-          if (hedef is Map && hedef['answers'] is Map) {
-            final cevaplar = <String>[];
-            var uygun = true;
-            for (final answer in (hedef['answers'] as Map).values) {
-              final textAnswers = answer is Map ? answer['textAnswers'] : null;
-              final values = textAnswers is Map ? textAnswers['answers'] : null;
-              if (values is! List || values.isEmpty) {
-                uygun = false;
-                break;
-              }
-              for (final value in values) {
-                final text = value is Map ? value['value'] : null;
-                if (text is! String || text.length > 5000) {
-                  uygun = false;
-                  break;
-                }
-                cevaplar.add(text);
-              }
-              if (!uygun || cevaplar.length > 100) break;
-            }
-            if (uygun && cevaplar.isNotEmpty && cevaplar.length <= 100) {
-              beklenenCevaplar = cevaplar;
-            }
-          }
-          final taniData = _oku(
-            await _client
-                .post(
-                  Uri.https('script.googleapis.com', '/v1/scripts/$deploymentId:run'),
-                  headers: headers,
-                  body: jsonEncode({
-                    'function': 'okulYanitKimlikTani',
-                    'parameters': [formId, responseId, olusturulma, beklenenCevaplar],
-                    'devMode': false,
-                  }),
-                )
-                .timeout(const Duration(seconds: 30)),
-          );
-          final yanit = taniData['response'];
-          final sonuc = yanit is Map ? yanit['result'] : null;
-          if (taniData['error'] == null &&
-              taniData['done'] == true &&
-              sonuc is Map &&
-              sonuc['protocol'] == 'okul-yanit-kimlik-tani/v1' &&
-              sonuc['formId'] == formId &&
-              sonuc['scriptCount'] is int &&
-              sonuc['exactMatches'] is int &&
-              (sonuc['scriptCount'] as int) >= 0 &&
-              (sonuc['exactMatches'] as int) >= 0 &&
-              (sonuc['exactMatches'] as int) <= (sonuc['scriptCount'] as int)) {
-            tani = ' REST API hedef yanıtı buldu; Apps Script yanıt sayısı: '
-                '${sonuc['scriptCount']}, birebir kimlik eşleşmesi: '
-                '${sonuc['exactMatches']}.'
-                ' Aynı gönderim zamanındaki aday sayısı: '
-                '${sonuc['timestampMatches'] is int ? sonuc['timestampMatches'] : 'belirlenemedi'}.'
-                ' Cevap içeriği eşleşen aday: '
-                '${sonuc['contentMatches'] is int ? sonuc['contentMatches'] : 'belirlenemedi'}.'
-                ' Saat ve cevap birlikte eşleşen aday: '
-                '${sonuc['timeAndContentMatches'] is int ? sonuc['timeAndContentMatches'] : 'belirlenemedi'}.'
-                ' Bu eşleşmeler silme yetkisi vermez.';
-          }
-        } catch (_) {
-          // Tanı başarısızsa asıl silme hatasını gizleme.
-        }
+    await kaynakKontrol();
+    Map<String, dynamic> data;
+    try {
+      data = await betik('okulYanitSil', [formId, responseId]);
+    } catch (_) {
+      // POST yanıtı kaybolduğunda tekrar silme gönderme; salt okunur doğrula.
+      if (await yokMu()) {
+        secimiDogrula();
+        return false;
       }
       throw StateError(
-        'Google silme betiği tamamlanamadı.$tani '
-        'Apps Script yetkisini, dağıtımını ve form/yanıt kimliklerini kontrol edin. '
-        'Yanıt uygulamada korundu.',
+        'Google silme isteğinin sonucu doğrulanamadı. Yerel yanıt korundu.',
+      );
+    }
+    if (data['error'] != null) {
+      if (await yokMu()) {
+        secimiDogrula();
+        return false;
+      }
+      String tani = '';
+      try {
+        // Tanı için öğrenci cevapları veya zamanını betiğe aktarmak gerekmez.
+        final taniData = await betik('okulYanitKimlikTani', [
+          formId,
+          responseId,
+          null,
+          null,
+        ]);
+        final yanit = taniData['response'];
+        final sonuc = yanit is Map ? yanit['result'] : null;
+        if (taniData['error'] == null &&
+            taniData['done'] == true &&
+            sonuc is Map &&
+            sonuc['protocol'] == 'okul-yanit-kimlik-tani/v1' &&
+            sonuc['formId'] == formId &&
+            sonuc['scriptCount'] is int &&
+            sonuc['exactMatches'] is int &&
+            (sonuc['scriptCount'] as int) >= 0 &&
+            (sonuc['exactMatches'] as int) >= 0 &&
+            (sonuc['exactMatches'] as int) <= (sonuc['scriptCount'] as int)) {
+          tani =
+              ' Apps Script yanıt sayısı: ${sonuc['scriptCount']}, '
+              'birebir kimlik eşleşmesi: ${sonuc['exactMatches']}.';
+        }
+      } catch (_) {
+        // Tanı başarısızlığı asıl silme sonucunu değiştirmez.
+      }
+      throw StateError(
+        'Google yanıtı silinemedi.$tani '
+        'REST ve Apps Script kimlikleri kesin eşleşmeden başka bir yanıt silinmez. '
+        'Saat ve cevap eşleşmesi kimlik kanıtı değildir. Yerel yanıt korundu.',
       );
     }
     final response = data['response'];
@@ -962,16 +1256,12 @@ class BilgiToplamaGoogleService {
         result['protocol'] != 'okul-yanit-sil/v1' ||
         result['formId'] != formId ||
         result['responseId'] != responseId ||
-        result['absent'] != true) {
+        result['absent'] != true ||
+        result['deleted'] is! bool) {
       throw StateError(
-        'Google silme sonucu doğrulanamadı. Yanıt uygulamada korundu; yeniden deneyebilirsiniz.',
+        'Google silme sonucu doğrulanamadı. Yerel yanıt korundu.',
       );
     }
-    // Betiğin dönüşüne ek olarak, aynı hesaptan Forms API ile doğrula.
-    // Önce form erişimini doğrula: formun 404 olması yanıt silindi demek değildir.
-    await durum(token, formId);
-    // Google Forms API bazen silinen yanıtı kısa süre daha listeler.
-    // Silme kesinleşmeden yerel yanıt kaydını asla kaldırma.
     const beklemeler = <Duration>[
       Duration.zero,
       Duration(seconds: 1),
@@ -979,35 +1269,76 @@ class BilgiToplamaGoogleService {
       Duration(seconds: 4),
       Duration(seconds: 8),
     ];
-    for (var deneme = 0; deneme < beklemeler.length; deneme++) {
-      if (deneme > 0) await Future<void>.delayed(beklemeler[deneme]);
-      final kontrol = await _client
-          .get(
-            Uri.parse(
-              '$_kok/${Uri.encodeComponent(formId)}/responses/${Uri.encodeComponent(responseId)}',
-            ),
-            headers: {...headers, 'Cache-Control': 'no-cache'},
-          )
-          .timeout(const Duration(seconds: 30));
-      if (kontrol.statusCode == 404) {
-        await durum(token, formId);
-        return;
-      }
-      if (kontrol.statusCode != 200) {
-        throw StateError(
-          'Google silme doğrulaması başarısız (HTTP ${kontrol.statusCode}). Yerel kayıt korundu.',
-        );
-      }
-      if (result['deleted'] == false) {
-        throw StateError(
-          'Silme betiği yanıtı bulamadı ancak Forms API yanıtı hâlâ gösteriyor. '
-          'Form/yanıt kimliği veya Apps Script dağıtım sürümü uyuşmuyor. Yerel kayıt korundu.',
-        );
+    for (final bekleme in beklemeler) {
+      if (bekleme != Duration.zero) await Future<void>.delayed(bekleme);
+      secimiDogrula();
+      if (await yokMu()) {
+        secimiDogrula();
+        return result['deleted'] == true;
       }
     }
     throw StateError(
-      'Silme betiği tamamlandı ancak yanıt Google Forms API tarafından hâlâ döndürülüyor. '
-      '15 saniyelik tekrar kontrolünden sonra da yanıt doğrulanamadı. Yerel kayıt korundu. Google Forms üzerinden yanıtı kontrol edin ve daha sonra yeniden deneyin.',
+      'Silme betiği tamamlandı ancak Google yanıtının yokluğu kesinleşmedi. '
+      'Yerel kayıt korundu.',
     );
+  }
+
+  Future<bool> _dogrudanGoogleYanitiSil(
+    String deployment,
+    String token,
+    String formId,
+    String responseId,
+    Map<String, dynamic> snapshot, {
+    bool Function()? devamEt,
+    Future<void> Function()? hedefKontrol,
+  }) async {
+    final expected = _dogrudanKayit(snapshot, formId);
+    if (expected['responseId'] != responseId) {
+      throw StateError('Seçili Google kimliği değişti.');
+    }
+    Future<void> kontrol() async {
+      if (devamEt != null && !devamEt()) throw StateError('Silme durduruldu.');
+      if (hedefKontrol != null) await hedefKontrol();
+      if (devamEt != null && !devamEt()) throw StateError('Silme durduruldu.');
+    }
+
+    await kontrol();
+    final once = await googleDogrudanYanitlariOku(deployment, token, formId);
+    final matches = once.where((r) => r['responseId'] == responseId).toList();
+    if (matches.isEmpty) {
+      await kontrol();
+      return false;
+    }
+    if (_anlikIcerik(matches.single) != _anlikIcerik(expected)) {
+      throw StateError('Seçilen yanıt değişti. Silme yapılmadı.');
+    }
+    await kontrol();
+    Map<String, dynamic>? result;
+    try {
+      result = await _betikCagir(deployment, token, 'okulYanitSil', [
+        formId,
+        responseId,
+        expected,
+      ]);
+    } catch (_) {
+      // Sonucu kaybolmuş POST yinelenmez; aynı kaynaktan yokluk doğrulanır.
+    }
+    final after = await googleDogrudanYanitlariOku(deployment, token, formId);
+    if (after.any((r) => r['responseId'] == responseId)) {
+      throw StateError('Google yanıtı hâlâ mevcut; silme doğrulanamadı.');
+    }
+    if (result != null &&
+        (result['protocol'] != 'okul-yanit-sil/v2' ||
+            result['implementation'] != 'native-response-2026-11-20' ||
+            result['formId'] != formId ||
+            result['responseId'] != responseId ||
+            result['absent'] != true ||
+            result['deleted'] is! bool)) {
+      throw StateError(
+        'Google silme sonucu yanlış hedef veya protokol içeriyor.',
+      );
+    }
+    // Silme sırasında Durdur'a basılması doğrulanmış uzak sonucu kaybettirmez.
+    return result?['deleted'] == true;
   }
 }

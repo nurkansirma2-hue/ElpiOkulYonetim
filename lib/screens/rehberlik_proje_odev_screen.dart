@@ -74,6 +74,11 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   final dersSecimi = <int, String>{};
   final onaySecimi = <int, String>{};
   final yanitSecimi = <int, String>{};
+  List<Map<String, dynamic>>? dogrudanYanitlar;
+  final dogrudanSecim = <String, String>{};
+  String? dogrudanUyari;
+  bool get dogrudanIsteniyor => google.dogrudanYanitOkuma && !salt;
+  bool get dogrudanAktif => dogrudanIsteniyor && dogrudanYanitlar != null;
   bool yanitSecimModu = false;
   bool formSecimModu = false;
   final formSecimi = <int>{};
@@ -472,6 +477,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   });
 
   Future<void> _formAc(Map<String, dynamic> p, {int islem = 1}) async {
+    dogrudanYanitlar = null;
+    dogrudanUyari = null;
     _formSeciminiKapat();
     _yanitSeciminiKapat();
     onaySecimi.clear();
@@ -681,8 +688,254 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     await google.yanitlariAl(fs, fb!, formId, await _token());
     await _kontrol();
     await _yukle();
+    if (dogrudanIsteniyor) await _dogrudanYukle();
+    sonuc = 'Google yanıtları alındı.';
     plan = null;
   }
+
+  Future<void> _dogrudanYukle() async {
+    await _kontrol();
+    final fid = formId;
+    late final List<Map<String, dynamic>> rows;
+    try {
+      rows = await google.dogrudanYanitlariAl(fs, fb!, fid, await _token());
+    } catch (_) {
+      await _kontrol();
+      if (!mounted || proje?['formId'] != fid) {
+        throw StateError('Form seçimi değişti.');
+      }
+      dogrudanYanitlar = null;
+      _yanitSeciminiKapat();
+      dogrudanUyari =
+          'Kaydedilmiş yanıtlar görüntüleniyor. Google’daki silme hedefleri '
+          'doğrulanamadığı için silme kapalı; yanıtları yenilemeye devam edebilirsiniz.';
+      return;
+    }
+    dogrudanUyari = null;
+    await _kontrol();
+    if (!mounted || proje?['formId'] != fid) {
+      throw StateError('Form seçimi değişti.');
+    }
+    final sorted = rows.toList()
+      ..sort((a, b) {
+        final aNo = _dogrudanOkulNo(a), bNo = _dogrudanOkulNo(b);
+        if (aNo != null && bNo != null && aNo != bNo) return aNo.compareTo(bNo);
+        if (aNo != null && bNo == null) return -1;
+        if (aNo == null && bNo != null) return 1;
+        final ad = _dogrudanBaslik(a).compareTo(_dogrudanBaslik(b));
+        if (ad != 0) return ad;
+        return (b['submittedTime'] as String).compareTo(
+          a['submittedTime'] as String,
+        );
+      });
+    dogrudanYanitlar = sorted;
+    dogrudanSecim.removeWhere(
+      (id, imza) =>
+          !sorted.any((r) => r['responseId'] == id && jsonEncode(r) == imza),
+    );
+  }
+
+  String _dogrudanBaslik(Map<String, dynamic> row) {
+    final answers = row['answers'] as List;
+    if (answers.isEmpty) return 'Google yanıtı';
+    final values = (answers.first as Map)['values'] as List;
+    return values.join(' • ');
+  }
+
+  // Yalnız görünüm sırası içindir; silme kimliği olarak kullanılmaz.
+  int? _dogrudanOkulNo(Map<String, dynamic> row) {
+    final parts = _dogrudanBaslik(row).split(' • ');
+    return int.tryParse(parts.length >= 3 ? parts[1] : parts.first);
+  }
+
+  Future<void> _dogrudanSil() async {
+    await _kontrol();
+    final fid = formId;
+    final secim = Map<String, String>.of(dogrudanSecim);
+    final snapshots = [
+      for (final r in dogrudanYanitlar ?? <Map<String, dynamic>>[])
+        if (secim[r['responseId']] == jsonEncode(r)) r,
+    ];
+    if (snapshots.isEmpty || snapshots.length != secim.length) {
+      throw StateError('Seçili Google yanıtları değişti. Listeyi yenileyin.');
+    }
+    final token = await _token();
+    // Bu plan sadece form kapsamını taşır; native kimlikler yerel REST
+    // kayıtlarıyla eşlenmez veya onların yerine yazılmaz.
+    final silme = await fs.topluSilmePlani(
+      fb!,
+      fid,
+      sadeceKaydedilenler: false,
+      seciliYanitIdleri: {},
+    );
+    final metin = snapshots
+        .map(
+          (r) =>
+              '${_dogrudanBaslik(r)}\n'
+              'Gönderim: ${_tarihYaz(r['submittedTime'] as String)}\n'
+              '${(r['answers'] as List).map((a) => '${a['title']}: ${(a['values'] as List).join(', ')}').join('\n')}',
+        )
+        .join('\n\n');
+    if (!mounted ||
+        !await _onay(
+          'Seçili yanıtları sil',
+          '$metin\n\n${snapshots.length} seçili yanıt Google Forms’dan kalıcı olarak silinecek. '
+              'Yanıt değişirse silme durur. Google’da yokluğu doğrulanan ham kayıtlar temizlenir. '
+              'Öğrenci ana kayıtları ve onaylı bilgiler korunur. Tercih ve dağıtım sonuçları yeniden kontrol gerektirebilir. '
+              'Google E-Tablo kopyaları ve eski yedekler silinmez.',
+        )) {
+      return;
+    }
+    await _kontrol();
+    bool ayni() =>
+        mounted &&
+        proje?['formId'] == fid &&
+        dogrudanSecim.length == secim.length &&
+        secim.entries.every((e) => dogrudanSecim[e.key] == e.value);
+    if (!ayni()) throw StateError('Yanıt seçimi değişti. Silme başlatılmadı.');
+    silmeDurdur = false;
+    late BilgiToplamaTopluSilmeSonucu silinen;
+    setState(() => silmeIlerleme = 'Siliniyor: 0 / ${snapshots.length}');
+    try {
+      silinen = await google.yanitlariTopluSil(
+        fs,
+        fb!,
+        silme,
+        token,
+        dogrudanHedefler: snapshots,
+        devamEt: () => ayni() && !silmeDurdur,
+        ilerleme: (n, toplam) {
+          if (mounted) {
+            setState(() => silmeIlerleme = 'Siliniyor: $n / $toplam');
+          }
+        },
+      );
+    } finally {
+      silmeIlerleme = null;
+    }
+    await _kontrol();
+    await _yukle();
+    try {
+      await _dogrudanYukle();
+    } catch (_) {
+      dogrudanYanitlar = null;
+      _yanitSeciminiKapat();
+      hata =
+          'Güncel Google yanıt listesi alınamadı. Yenileyene kadar silme kapalı.';
+    }
+    if (dogrudanSecim.isEmpty) _yanitSeciminiKapat();
+    plan = null;
+    sonuc =
+        '${silinen.googleSilinen} yanıt Google’dan silindi; '
+        '${silinen.yokluguDogrulanan} yanıtın yokluğu doğrulandı; ${silinen.kalan} yanıt silinmedi. '
+        '${silinen.yerelTemizlikTamam ? 'Yerel liste Google REST sonuçlarıyla yenilendi.' : 'Yerel temizlik doğrulanamadı; ham kayıtlar korundu.'}'
+        '${silinen.hatalar.isEmpty ? '' : '\n${silinen.hatalar.join('\n')}'}';
+  }
+
+  Widget _dogrudanListe() {
+    final rows = dogrudanYanitlar;
+    if (rows == null) {
+      return _bilgi(
+        'Yanıtları Getir ile Google yanıtlarını yükleyin. '
+        'Silme, bu listede ilk seçtiğiniz gerçek Google yanıtı üzerinde yapılır.',
+      );
+    }
+    final gorulen = <String>{};
+    final sonYanitlar = {
+      for (final row in rows)
+        if (gorulen.add(
+          _dogrudanOkulNo(row)?.toString() ?? _dogrudanBaslik(row),
+        ))
+          row['responseId'],
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Tercih onayları ve yerel düzeltmeler Tercih Kontrolü bölümündedir.',
+        ),
+        if (yanitSecimModu)
+          Row(
+            children: [
+              Expanded(
+                child: CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    'Tümünü seç (${dogrudanSecim.length}/${rows.length})',
+                  ),
+                  value: rows.isNotEmpty && dogrudanSecim.length == rows.length,
+                  onChanged: busy
+                      ? null
+                      : (v) => setState(() {
+                          dogrudanSecim.clear();
+                          if (v == true) {
+                            for (final r in rows) {
+                              dogrudanSecim[r['responseId'] as String] =
+                                  jsonEncode(r);
+                            }
+                          }
+                        }),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Seçimi kapat',
+                onPressed: busy ? null : () => setState(_yanitSeciminiKapat),
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+        if (rows.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('Google’da yanıt yok.'),
+          ),
+        for (final row in rows)
+          Card(
+            key: ValueKey('google-yanit-${row['responseId']}'),
+            child: ListTile(
+              leading: yanitSecimModu
+                  ? Checkbox(
+                      value: dogrudanSecim.containsKey(row['responseId']),
+                      onChanged: busy ? null : (_) => _dogrudanSec(row),
+                    )
+                  : const Icon(Icons.assignment_outlined),
+              title: Text(
+                _dogrudanBaslik(row),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final a in row['answers'] as List)
+                    Text('${a['title']}: ${(a['values'] as List).join(', ')}'),
+                  Text(
+                    'Gönderim: ${_tarihYaz(row['submittedTime'] as String)}',
+                  ),
+                  if (sonYanitlar.contains(row['responseId']))
+                    const Text(
+                      'Son yanıt',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                ],
+              ),
+              onLongPress: busy ? null : () => _dogrudanSec(row),
+              onTap: busy ? null : () => _dogrudanSec(row),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _dogrudanSec(Map<String, dynamic> row) => setState(() {
+    yanitSecimModu = true;
+    final id = row['responseId'] as String;
+    if (dogrudanSecim.containsKey(id)) {
+      dogrudanSecim.remove(id);
+    } else {
+      dogrudanSecim[id] = jsonEncode(row);
+    }
+  });
 
   Future<void> _ortakForm() async {
     if (!mounted) return;
@@ -719,9 +972,10 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   List<Map<String, dynamic>> get yanitSatirlari {
     final satirlar = hamYanitlar.map((y) {
       final raw = jsonDecode(y['HamYanit'] as String) as Map;
-      final googleZamani = raw['lastSubmittedTime']?.toString() ??
-          raw['createTime']?.toString();
-      final zaman = DateTime.tryParse(googleZamani ?? '') ??
+      final googleZamani =
+          raw['lastSubmittedTime']?.toString() ?? raw['createTime']?.toString();
+      final zaman =
+          DateTime.tryParse(googleZamani ?? '') ??
           DateTime.tryParse(y['OlusturmaTarihi']?.toString() ?? '');
       final okulNo = y['GirilenOkulNo']?.toString().trim() ?? '';
       return {
@@ -818,6 +1072,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     }
   });
   void _yanitSeciminiKapat() {
+    dogrudanSecim.clear();
     yanitSecimi.clear();
     yanitSecimModu = false;
   }
@@ -867,12 +1122,39 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   }
 
   Future<void> _yanitlariSil() async {
+    if (dogrudanIsteniyor && !dogrudanAktif) {
+      throw StateError(
+        'Google’daki silme hedefleri doğrulanamadı. Yanıtlar korunuyor.',
+      );
+    }
     await _kontrol();
     _secilenYanitlariDogrula();
     final secilen = Map<int, String>.of(yanitSecimi);
+    final secilenGoogleIdleri = {
+      for (final y in hamYanitlar.where((y) => secilen.containsKey(y['Id'])))
+        y['Id'] as int: y['GoogleYanitId'],
+    };
+    final hedefFormId = formId;
     final token = await _token();
     await google.yanitlariAl(fs, fb!, formId, token);
     final guncel = await fs.yanitlar(fb!, formId);
+    // Senkronizasyon ham kayıtları temizlemiş olabilir; hata/erken dönüşte de
+    // eski satırları ekranda bırakma. Aynı Google kimliğinin yeni sürümü korunur.
+    await _yukle();
+    final temizlenenler = secilen.keys
+        .where(
+          (id) =>
+              !guncel.any((y) => y['GoogleYanitId'] == secilenGoogleIdleri[id]),
+        )
+        .toSet();
+    secilen.removeWhere((id, _) => temizlenenler.contains(id));
+    if (secilen.isEmpty) {
+      _yanitSeciminiKapat();
+      sonuc =
+          '${temizlenenler.length} seçili yanıtın Google’da yokluğu doğrulandı; '
+          'ham kayıtları temizlendi. Diğer yanıtlar korundu.';
+      return;
+    }
     if (!secilen.entries.every(
       (e) => guncel.any((y) => y['Id'] == e.key && y['KaynakSurum'] == e.value),
     )) {
@@ -888,15 +1170,31 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       throw StateError('Seçili yanıtlar artık silinebilir değil. Yenileyin.');
     }
     if (!mounted) return;
+    final hedefler = yanitSatirlari
+        .where((r) => secilen.containsKey(r['yanitId']))
+        .map(
+          (r) =>
+              '${r['OkulNo']} • ${r['Ad']} ${r['Soyad']} • '
+              '${_tarihYaz(r['gonderimZamani'] as String?)}',
+        )
+        .join('\n');
     if (!await _onay(
       'Seçili yanıtları sil',
-      '${silme.toplam} yanıt Google Forms’dan ve uygulamadaki ham cevaplardan kalıcı olarak silinecek. '
+      '$hedefler\n\n${silme.toplam} yanıt Google Forms’dan ve uygulamadaki ham cevaplardan kalıcı olarak silinecek. '
           'Bu yanıtların tercih onayları ve dağıtım sonuçları yeniden kontrol gerektirecek. '
           'Öğrenci ana kayıtları korunur. Google E-Tablo kopyaları ve eski yedekler silinmez.',
     )) {
       return;
     }
     await _kontrol();
+    bool secimAyni() =>
+        mounted &&
+        proje?['formId'] == hedefFormId &&
+        yanitSecimi.length == secilen.length &&
+        secilen.entries.every((e) => yanitSecimi[e.key] == e.value);
+    if (!secimAyni()) {
+      throw StateError('Yanıt seçimi değişti. Silme başlatılmadı.');
+    }
     silmeDurdur = false;
     if (mounted) {
       setState(() => silmeIlerleme = 'Siliniyor: 0 / ${silme.toplam}');
@@ -908,7 +1206,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
         fb!,
         silme,
         token,
-        devamEt: () => mounted && !silmeDurdur,
+        devamEt: () => secimAyni() && !silmeDurdur,
         ilerleme: (n, toplam) {
           if (mounted) {
             setState(() => silmeIlerleme = 'Siliniyor: $n / $toplam');
@@ -923,7 +1221,10 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     plan = null;
     if (silinen.kalan == 0) _yanitSeciminiKapat();
     sonuc =
-        '${silinen.basarili} yanıt silindi; ${silinen.kalan} yanıt kaldı.${silinen.hatalar.isEmpty ? '' : '\n${silinen.hatalar.join('\n')}'}';
+        '${silinen.googleSilinen} yanıt silindi; ${silinen.kalan} yanıt kaldı. '
+        '${silinen.yokluguDogrulanan + temizlenenler.length} yanıtın Google’da yokluğu doğrulanarak ham kayıtları temizlendi; '
+        '${silinen.kalan} yanıt korundu (${silinen.hatalar.length} başarısız, '
+        '${silinen.durdurulan} işlenmedi).${silinen.hatalar.isEmpty ? '' : '\n${silinen.hatalar.join('\n')}'}';
   }
 
   /// Sadece tek bir REST yanıt kimliği seçilmişken çalışır.
@@ -953,7 +1254,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       throw StateError('Google Forms düzenleme ekranı açılamadı.');
     }
-    sonuc = 'Google Forms açıldı. Yanıtlar > Bireysel bölümünde '
+    sonuc =
+        'Google Forms açıldı. Yanıtlar > Bireysel bölümünde '
         'seçtiğiniz yanıtın öğrenci, gönderim zamanı ve cevaplarını '
         'kontrol ederek yalnız o yanıtı silin. '
         'Ardından uygulamaya dönüp silinmeyi doğrulayın.';
@@ -964,8 +1266,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     final id = _tekSeciliGoogleYanitId();
     final secim = yanitSecimi.entries.single;
     final satir = yanitSatirlari.singleWhere(
-      (r) => r['yanitId'] == secim.key &&
-          r['kaynakSurum'] == secim.value,
+      (r) => r['yanitId'] == secim.key && r['kaynakSurum'] == secim.value,
     );
     if (!await _onay(
       'Google’da silinmeyi doğrula',
@@ -974,7 +1275,9 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
           'Bu yanıtı Google Forms üzerinden sildiyseniz devam edin. '
           'Uygulama yalnız bu yanıtın artık Google’da bulunmadığını '
           'kontrol edecek. Aynı öğrencinin diğer yanıtları korunacak.',
-    )) return;
+    )) {
+      return;
+    }
     if (!mounted) return;
     await _kontrol();
     if (_tekSeciliGoogleYanitId() != id) {
@@ -989,7 +1292,9 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     if (plan.toplam != 1 ||
         plan.googleYanitIdleri.length != 1 ||
         plan.googleYanitIdleri.single != id) {
-      throw StateError('Yanıt eşleştirmesi kesin değil. Hiçbir kayıt temizlenmedi.');
+      throw StateError(
+        'Yanıt eşleştirmesi kesin değil. Hiçbir kayıt temizlenmedi.',
+      );
     }
     final token = await _token();
     await fs.topluSilmeYanitiSil(
@@ -1002,7 +1307,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     await _kontrol();
     await _yukle();
     this.plan = null;
-    sonuc = 'Yalnız seçili yanıtın Google’da silindiği doğrulandı. '
+    sonuc =
+        'Yalnız seçili yanıtın Google’da silindiği doğrulandı. '
         'Uygulamadaki ham verileri temizlendi; diğer yanıtlar korundu.';
   }
 
@@ -1922,12 +2228,14 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
           selected: {sekme},
           onSelectionChanged: busy
               ? null
-              : (s) => setState(() {
+              : (s) => _is(() async {
                   sekme = s.single;
                   _yanitSeciminiKapat();
+                  if (sekme == 1 && dogrudanIsteniyor) await _dogrudanYukle();
                 }),
         ),
         const SizedBox(height: 12),
+        if (dogrudanUyari != null) _bilgi(dogrudanUyari!),
         if (sekme == 0) ...[
           _kart('Form Yanıt Durumu', Icons.bar_chart, [
             _istatistik([
@@ -1947,6 +2255,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
           ]),
         ] else if (sekme == 2)
           _degerlendirme()
+        else if (dogrudanAktif)
+          _dogrudanListe()
         else ...[
           if (yanitSecimModu)
             Row(
@@ -2030,7 +2340,10 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                       '${r['gonderimZamani'] == null ? ' (yerel kayıt zamanı: ${_tarihYaz((r['gorunumZamani'] as DateTime?)?.toIso8601String())})' : ''}',
                     ),
                     if (r['sonYanit'] == true)
-                      const Text('Son yanıt', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text(
+                        'Son yanıt',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     if (r['onayli'] == true) const Text('Onaylı'),
                   ],
                 ),
@@ -2962,6 +3275,16 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                       analiz?['sonuclandi'] != true,
                   renk: const Color(0xff008a24),
                 ),
+            ] else if (yanitSecimModu && dogrudanAktif) ...[
+              _buton(
+                'Toplu Sil (${dogrudanSecim.length})',
+                Icons.delete_outline,
+                _dogrudanSil,
+                etkin: dogrudanSecim.isNotEmpty,
+                ikincil: true,
+                renk: const Color(0xffd92737),
+              ),
+              _buton('Yanıtları Getir', Icons.refresh, _yanitAl, ikincil: true),
             ] else if (yanitSecimModu) ...[
               _buton(
                 'Toplu Onayla (${yanitSecimi.length})',
@@ -2974,7 +3297,9 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                 'Toplu Sil (${yanitSecimi.length})',
                 Icons.delete_outline,
                 _yanitlariSil,
-                etkin: yanitSecimi.isNotEmpty,
+                etkin:
+                    yanitSecimi.isNotEmpty &&
+                    (!dogrudanIsteniyor || dogrudanAktif),
                 ikincil: true,
                 renk: const Color(0xffd92737),
               ),

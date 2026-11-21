@@ -1,5 +1,36 @@
 # Google Forms yanıt silme bağlantısı
 
+## 21 Kasım 2026 — Proje Ödevleri için doğrudan yanıt kimliği
+
+Bu bölüm kaynak kod değişikliğidir; canlı dağıtımın güncellendiği anlamına gelmez.
+
+- Proje Ödevleri → Yanıtlar listesi `okulYanitlariOku(formId)` ile okunur.
+  Liste ve silme aynı `FormResponse.getId()` değerini kullanır. İlk seçilen satır
+  silinir; ikinci bir seçim listesi açılmaz. Eski REST kimlikleri dönüştürülmez.
+- Okuma sonucu `okul-yanitlar/v2`, silme sonucu `okul-yanit-sil/v2` protokolündedir.
+  Kaynak sürümü `native-response-2026-11-20` olarak doğrulanır. Salt okunur
+  kurulum kontrolündeki `nativeImplementation` ve `capabilities` bunu ayrıca bildirir.
+- Mevcut `okulYanitSil` işlevinin üçüncü parametresi, listede okunan hedefin anlık
+  görüntüsüdür. Betik kimliği ve içeriği yeniden denetler; değişen hedefi silmez.
+  Eski iki parametreli çağrılar korunur; diğer modüller kendiliğinden değiştirilmez.
+- Silme sonrasında yokluk aynı kaynaktan bağımsız okunur. SQLite temizliği ayrıca
+  REST tam liste + ilgili REST kimliğine GET 404 kanıtıyla yapılır. Native kimlikle
+  REST sorgusu yapılmaz. REST 200, yetki/ağ hatası veya eksik listede ham kayıt korunur.
+- Tercih onayları ve yerel düzeltmeler mevcut Tercih Kontrolü bölümünde korunur.
+  Öğrenci ana/ek bilgileri, mevcut onaylar ve eski yedekler dönüştürülmez.
+- Tam liste güvenlik sınırı 5000 yanıt ve 5 milyon JSON karakteri'dır; parçalı sonuç başarı sayılmaz.
+  Proje formunun metin/liste cevapları desteklenir; desteklenmeyen cevap türünde
+  sessiz atlama veya tahmini eşleme yapılmaz.
+- Canlı kullanım için mevcut API dağıtımı aynı kimlik korunarak bu `Code.gs`
+  sürümüne bir kez güncellenmeli ve Flutter'ın yeni kodu çalıştırılmalıdır.
+  Eski dağıtımı tekrar tekrar denemek bu protokolü eklemez. Yeni paket, SQLite
+  şeması, OAuth kapsamı veya Cloud proje değişikliği gerekmez.
+- Manifestteki `MYSELF` erişimi değiştirilmedi. Bu çalışma çok kullanıcılı hazır
+  olduğu iddiası taşımaz. Gerçek hesapta dağıtım ve ayrı test formunda silme ayrıca
+  yetkilendirilip doğrulanmadan üretimde çalıştığı söylenemez.
+
+Bu çalışma sırasında canlı betik güncellenmedi ve gerçek öğrenci yanıtı silinmedi.
+
 Bu klasördeki `Code.gs` ve `appsscript.json`, Flutter uygulamasındaki
 **Google Forms ve uygulamadan sil** işlemi içindir. SQL/API veya paket değişikliği yoktur.
 

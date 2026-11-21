@@ -23,6 +23,8 @@ import 'package:elpi_okul_yonetim/models/mesajlasma.dart';
 import 'support/windows_memory_database.dart';
 
 class _ProjeYanitTestGoogle extends BilgiToplamaGoogleService {
+  @override
+  bool get dogrudanYanitOkuma => false;
   final silinen = <String>[];
   final hatali = <String>{};
   final silinenFormlar = <int>[];
@@ -74,6 +76,7 @@ class _ProjeYanitTestGoogle extends BilgiToplamaGoogleService {
     String token, {
     bool Function()? devamEt,
     void Function(int, int)? ilerleme,
+    List<Map<String, dynamic>>? dogrudanHedefler,
   }) async {
     var n = 0;
     final hatalar = <String>[];
@@ -97,6 +100,65 @@ class _ProjeYanitTestGoogle extends BilgiToplamaGoogleService {
       }
     }
     return BilgiToplamaTopluSilmeSonucu(n, plan.toplam - n, hatalar);
+  }
+}
+
+class _IlkSecimGoogle extends _ProjeYanitTestGoogle {
+  bool okumaHatasi = false;
+  @override
+  bool get dogrudanYanitOkuma => true;
+  final ilkSecilenler = <String>[];
+  final canli = <String, Map<String, dynamic>>{
+    for (final (id, zaman) in [
+      ('native-old', '2026-11-15T20:38:00.000Z'),
+      ('native-new', '2026-11-18T10:00:00.000Z'),
+    ])
+      id: {
+        'source': 'apps-script/v2',
+        'formId': 'google-proje-form',
+        'responseId': id,
+        'submittedTime': zaman,
+        'answers': [
+          {
+            'itemId': '1',
+            'title': 'Öğrenciyi seçin',
+            'values': ['9/C • 101 • Öğrenci1 Uzun Soyadı'],
+          },
+          {
+            'itemId': '2',
+            'title': '1. Ders Tercihi',
+            'values': ['Matematik'],
+          },
+        ],
+      },
+  };
+  @override
+  Future<List<Map<String, dynamic>>> dogrudanYanitlariAl(
+    BireyselBilgiToplamaService yerel,
+    BilgiToplamaOturumu b,
+    int formId,
+    String token,
+  ) async {
+    if (okumaHatasi) throw StateError('Test: silme betiği henüz güncellenmemiş.');
+    return canli.values.toList();
+  }
+  @override
+  Future<BilgiToplamaTopluSilmeSonucu> yanitlariTopluSil(
+    BireyselBilgiToplamaService yerel,
+    BilgiToplamaOturumu b,
+    BilgiToplamaSilmePlani plan,
+    String token, {
+    bool Function()? devamEt,
+    void Function(int, int)? ilerleme,
+    List<Map<String, dynamic>>? dogrudanHedefler,
+  }) async {
+    expect(dogrudanHedefler, isNotNull);
+    expect(devamEt?.call(), true);
+    for (final row in dogrudanHedefler!) {
+      ilkSecilenler.add(row['responseId'] as String);
+      canli.remove(row['responseId']);
+    }
+    return BilgiToplamaTopluSilmeSonucu(dogrudanHedefler.length, 0, []);
   }
 }
 
@@ -1006,6 +1068,136 @@ void main() {
     g.dispose();
   }
 
+  Future<void> silmeBaglantisiHazirDegilkenYenilemeyiDogrula(WidgetTester tester) async {
+    final g = _IlkSecimGoogle()..okumaHatasi = true;
+    addTearDown(g.dispose);
+    Future<void> bekle() async {
+      for (var i = 0; i < 50; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+        await tester.pump();
+        if (find.byType(LinearProgressIndicator).evaluate().isEmpty) break;
+      }
+      await tester.pumpAndSettle();
+    }
+    await tester.pumpWidget(MaterialApp(home: RehberlikProjeOdevScreen(
+      service: s, baglam: b, formService: fs, google: g, hesapBagla: () async => 'test',
+      atama: const {'RehberlikAtamaId': 1, 'SinifSubeId': 1, 'SinifKodu': '9/C', 'EgitimOgretimYili': '2026/2027'},
+    )));
+    await bekle();
+    await tester.tap(find.text('Proje'));
+    await bekle();
+    await tester.tap(find.text('Yanıtlar'));
+    await bekle();
+    expect(find.textContaining('101 • Öğrenci1'), findsNWidgets(2));
+    expect(find.textContaining('Kaydedilmiş yanıtlar görüntüleniyor'), findsOneWidget);
+    expect(find.textContaining('İşlem tamamlanamadı'), findsNothing);
+    await tester.tap(find.text('Yanıtları Getir'));
+    await bekle();
+    expect(find.text('Google yanıtları alındı.'), findsOneWidget);
+    expect(find.textContaining('101 • Öğrenci1'), findsNWidgets(2));
+    await tester.longPress(find.textContaining('101 • Öğrenci1').first);
+    await bekle();
+    final delete = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Toplu Sil (1)'));
+    expect(delete.onPressed, isNull);
+    expect(g.ilkSecilenler, isEmpty);
+    expect(await tester.runAsync(() => fs.yanitlar(fb, fid)), hasLength(2));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  }
+  testWidgets(
+    'ilk seçilen native satır ek seçim olmadan Toplu Sil ile işlenir',
+    (tester) async {
+      await yanit(1, [1, 2, 3], id: 'rest-old');
+      await yanit(1, [1, 2, 3], id: 'rest-new');
+      await silmeBaglantisiHazirDegilkenYenilemeyiDogrula(tester);
+      final once = await db.query('BilgiToplamaYanit');
+      final g = _IlkSecimGoogle();
+      addTearDown(g.dispose);
+      tester.view.physicalSize = const Size(320, 850);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      Future<void> bekle() async {
+        for (var i = 0; i < 50; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 30)),
+          );
+          await tester.pump();
+          if (find.byType(LinearProgressIndicator).evaluate().isEmpty) break;
+        }
+        await tester.pumpAndSettle();
+      }
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+            child: RehberlikProjeOdevScreen(
+              service: s,
+              baglam: b,
+              formService: fs,
+              google: g,
+              hesapBagla: () async => 'test',
+              atama: const {
+                'RehberlikAtamaId': 1,
+                'SinifSubeId': 1,
+                'SinifKodu': '9/C',
+                'EgitimOgretimYili': '2026/2027',
+              },
+            ),
+          ),
+        ),
+      );
+      await bekle();
+      await tester.tap(find.text('Proje'));
+      await bekle();
+      await tester.tap(find.text('Yanıtlar'));
+      await bekle();
+      expect(
+        find.byKey(const ValueKey('google-yanit-native-old')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('google-yanit-native-new')),
+        findsOneWidget,
+      );
+      await tester.ensureVisible(find.byKey(const ValueKey('google-yanit-native-old')));
+      await tester.pumpAndSettle();
+      await tester.longPress(
+        find.byKey(const ValueKey('google-yanit-native-old')),
+      );
+      await bekle();
+      await tester.tap(find.text('Toplu Sil (1)'));
+      await bekle();
+      expect(find.text('Seçili yanıtları sil'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(Checkbox),
+        ),
+        findsNothing,
+      );
+      await tester.tap(find.text('Onayla'));
+      await bekle();
+      expect(g.ilkSecilenler, ['native-old']);
+      expect(
+        find.byKey(const ValueKey('google-yanit-native-old')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('google-yanit-native-new')),
+        findsOneWidget,
+      );
+      // Eski REST kayıtları benzerlikle dönüştürülmez. Gerçek serviste bunları
+      // ayrı GET 404 doğrulaması temizler; bu ekran taklidi kayıtları değiştirmez.
+      expect(await db.query('BilgiToplamaYanit'), once);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    },
+  );
+
   Future<void> sonucEkraniniDogrula(
     WidgetTester tester,
     GlobalKey key,
@@ -1443,6 +1635,7 @@ void main() {
                 baglam: b,
                 formService: fs,
                 belgeService: belgeler,
+                google: _ProjeYanitTestGoogle(),
                 atama: const {
                   'RehberlikAtamaId': 1,
                   'SinifSubeId': 1,

@@ -462,16 +462,34 @@ class RehberlikGoogleFormService {
     return adres;
   }
 
-  /// Tam liste dışında kalan eski kimlik için bağımsız yokluk kontrolü.
-  /// 404 yokluğa, 200 hâlâ mevcut olduğuna işaret eder; diğer durumlar hata.
+  /// Silme, manuel doğrulama ve senkronizasyonun ortak yokluk kanıtı.
+  /// Erişilebilir doğru form + tekli GET 404 + eksiksiz listede yokluk ister.
   Future<bool> yanitGoogledaYokMu({
     required String erisimBelirteci,
     required String googleFormId,
     required String responseId,
   }) async {
-    if (erisimBelirteci.isEmpty || googleFormId.isEmpty || responseId.isEmpty) {
+    if (erisimBelirteci.trim().isEmpty ||
+        googleFormId.trim().isEmpty ||
+        responseId.trim().isEmpty) {
       throw const FormatException('Google doğrulama kimlikleri eksik.');
     }
+    Future<void> formuDogrula() async {
+      final form = _oku(
+        await _get(
+          Uri.parse('$_kok/${Uri.encodeComponent(googleFormId)}'),
+          headers: {
+            'Authorization': 'Bearer $erisimBelirteci',
+            'Cache-Control': 'no-cache',
+          },
+        ),
+      );
+      if (form['formId'] != googleFormId) {
+        throw StateError('Google form kimliği uyuşmuyor. Yerel kayıt korundu.');
+      }
+    }
+
+    await formuDogrula();
     final response = await _get(
       Uri.parse(
         '$_kok/${Uri.encodeComponent(googleFormId)}/responses/${Uri.encodeComponent(responseId)}',
@@ -481,8 +499,23 @@ class RehberlikGoogleFormService {
         'Cache-Control': 'no-cache',
       },
     );
-    if (response.statusCode == 404) return true;
+    // Bu yöntem yalnız yokluğu kanıtlar. HTTP 200 gövdesindeki farklı/eksik
+    // kimlik yokluk değildir; kayıt korunur, diğer yanıtların alınması sürer.
+    // Silme öncesi kesin kimlik kontrolü ayrıca silme servisinde yapılır.
     if (response.statusCode == 200) return false;
+    if (response.statusCode == 404) {
+      final liste = await yanitlariGetir(
+        erisimBelirteci: erisimBelirteci,
+        googleFormId: googleFormId,
+      );
+      if (liste.any((y) => y['responseId'] == responseId)) {
+        throw StateError(
+          'Google tekli yanıtı ve tam listesi çelişiyor. Yerel kayıt korundu.',
+        );
+      }
+      await formuDogrula();
+      return true;
+    }
     throw StateError(
       'Google yanıtının yokluğu doğrulanamadı (HTTP ${response.statusCode}). '
       'Yerel kayıtlar korundu.',
@@ -499,6 +532,7 @@ class RehberlikGoogleFormService {
       throw const FormatException('Google yetkisi veya form kimliği eksik.');
     }
     final bulunan = <String, Map<String, dynamic>>{};
+    final sayfalar = <String>{};
     String? sayfa;
     do {
       final uri =
@@ -511,20 +545,43 @@ class RehberlikGoogleFormService {
             },
           );
       final yanit = _oku(
-        await _get(uri, headers: {'Authorization': 'Bearer $erisimBelirteci'}),
+        await _get(
+          uri,
+          headers: {
+            'Authorization': 'Bearer $erisimBelirteci',
+            'Cache-Control': 'no-cache',
+          },
+        ),
       );
+      if ((yanit.containsKey('responses') && yanit['responses'] is! List) ||
+          (yanit.containsKey('nextPageToken') &&
+              yanit['nextPageToken'] is! String)) {
+        throw const FormatException(
+          'Google yanıt sayfası eksik veya geçersiz.',
+        );
+      }
       for (final item in yanit['responses'] as List? ?? const []) {
         if (item is! Map<String, dynamic>) {
           throw const FormatException('Google yanıtı biçimi geçersiz.');
         }
-        final id = item['responseId']?.toString() ?? '';
-        if (id.isEmpty) {
-          throw const FormatException('Google yanıt kimliği eksik.');
+        final id = item['responseId'];
+        if (id is! String ||
+            id.trim().isEmpty ||
+            bulunan.containsKey(id) ||
+            (item['formId'] != null && item['formId'] != googleFormId)) {
+          throw const FormatException(
+            'Google yanıt kimliği eksik, tekrarlı veya farklı forma ait.',
+          );
         }
         bulunan[id] = item;
       }
-      sayfa = yanit['nextPageToken']?.toString();
+      sayfa = yanit['nextPageToken'] as String?;
       if (sayfa == '') sayfa = null;
+      if (sayfa != null && !sayfalar.add(sayfa)) {
+        throw const FormatException(
+          'Google yanıt sayfalaması tekrarladı; liste tamamlanamadı.',
+        );
+      }
     } while (sayfa != null);
     return List.unmodifiable(bulunan.values);
   }

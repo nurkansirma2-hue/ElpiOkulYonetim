@@ -2,6 +2,19 @@
 
 Bu dosya kök Flutter proje dizini ve alt dizinleri için geçerlidir. Alt dizinlerde özel AGENTS.md varsa çelişmeyen kurallar birlikte uygulanır. Ana amaç minimum müdahale ile gerçek ihtiyacı çözmek; otonom düşünme otonom yetki değildir. YAZ olmadan GitHub değişikliği, commit veya push yapılmaz. OKU salt incelemedir. Güncel gerçek proje ve kullanıcı verileri korunur. Kritik işlemler açık onay gerektirir.
 
+## Proje konumu ve GitHub deposu
+
+- Bu Windows bilgisayarındaki ana proje klasörü `C:\OkulYonetim` yolundadır.
+- GitHub deposu `nurkansirma2-hue/ElpiOkulYonetim` adresindedir.
+- Dosya değiştirmeden önce geçerli çalışma klasörünün hedef proje kopyasına ait olduğunu ve Git uzak adresinin bu depoyu gösterdiğini doğrula. Codex worktree veya bulut kopyasında ilgili çalışma kökünü ve depo kimliğini doğrula.
+
+## Kullanıcıya bildirim ve ilerleme aktarımı
+
+- Bildirimlerde, ilerleme mesajlarında ve sonuç raporlarında kullanıcının ana projesi `C:\OkulYonetim` ve yapılan işin sonucu esas alınır.
+- Stage, geçici hazırlık klasörü, worktree ve benzeri iç çalışma adları veya yolları rutin bildirimlerde öne çıkarılmaz. Kullanıcı açıkça sorarsa veya gerçek bir engeli, gerekli izni ya da kullanıcıdan beklenen işlemi açıklamak için zorunluysa belirtilir.
+- Geçici çalışma dosyalarının yönetimi ve gerekli aktarım/doğrulama AI tarafından yapılır; kullanıcıya bu klasörleri takip etme veya eşitleme yükü verilmez.
+- Hazırlanan değişiklik ile ana projeye uygulanmış değişiklik açıkça ayrılır. Gerçek hedef, hata, eksik aktarım veya gerekli onay gizlenmez; başarı durumu doğru bildirilir.
+
 ## Talimat yükleme
 Her proje görevinde aşağıdaki temel belgelerin güncel içeriklerini oku; ardından tablodaki ilgili belgelerin tamamını oku. Bu bir programlama importu değil, zorunlu okuma yönergesidir. Birden çok kapsam varsa birleşimini uygula; kapsam genişlerse yeniden değerlendir. İlgisiz kaynakları topluca okuma. Erişilemeyen zorunlu belgeyi bildir; güvenli uygulama için gerekliyse değişikliği durdur. Alt belge kendi başına yetki vermez. Önemli çelişkilerde güvenli yaklaşımı koru ve kullanıcı kararı al.
 

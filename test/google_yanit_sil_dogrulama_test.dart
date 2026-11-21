@@ -42,7 +42,7 @@ void main() {
           }
           expect(r.method, 'GET');
           if (r.url.path.endsWith('/responses/r1')) {
-            return http.Response('{}', status);
+            return http.Response('{"responseId":"r1"}', status);
           }
           formChecks++;
           return http.Response(jsonEncode({'formId': 'f1'}), 200);
@@ -52,7 +52,8 @@ void main() {
         ).googleYanitSil('deployment', 'token', 'f1', 'r1');
         if (status == 404) {
           await future;
-          expect(formChecks, 2);
+          // İki form kontrolü ve eksiksiz liste doğrulaması.
+          expect(formChecks, 3);
         } else {
           await expectLater(future, throwsStateError);
         }
@@ -96,7 +97,7 @@ void main() {
         }
       }
       if (request.url.path.endsWith('/responses/r1')) {
-        return http.Response('{}', 200);
+        return http.Response('{"responseId":"r1"}', 200);
       }
       return http.Response(jsonEncode({'formId': 'f1'}), 200);
     });
@@ -116,7 +117,7 @@ void main() {
     test('manuel silme doğrulaması yanıt durumu $status', () async {
       final client = MockClient((r) async {
         if (r.url.path.endsWith('/responses/r1')) {
-          return http.Response('{}', status);
+          return http.Response('{"responseId":"r1"}', status);
         }
         if (r.url.path.endsWith('/responses')) {
           return http.Response(jsonEncode({'responses': []}), 200);
@@ -232,7 +233,10 @@ void main() {
           200,
         );
       }
-      fail('Eski dağıtımda Forms API çağrısı beklenmiyor');
+      if (request.url.path.endsWith('/responses/r1')) {
+        return http.Response('{"responseId":"r1"}', 200);
+      }
+      return http.Response('{"formId":"f1"}', 200);
     });
     await expectLater(
       BilgiToplamaGoogleService(
