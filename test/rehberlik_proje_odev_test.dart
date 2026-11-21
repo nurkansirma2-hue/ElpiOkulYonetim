@@ -1824,7 +1824,7 @@ void main() {
     await bekle();
     await tester.tap(find.text('Sınıfın proje dersleri'));
     await bekle();
-    await tester.tap(find.text('Dağıtım / Yazdırma'));
+    await tester.tap(find.text('Değerlendirme'));
     await bekle();
     expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
     await capture('400-5-degerlendirme-hazir');
@@ -1936,7 +1936,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Yanıtlar').last);
     await bekle();
-    await tester.tap(find.text('Dağıtım / Yazdırma').last);
+    await tester.tap(find.text('Değerlendirme').last);
     await bekle();
     final mesaj = find.widgetWithText(FilledButton, 'Öğretmene Mesaj').first;
     await tester.ensureVisible(mesaj);
@@ -2057,7 +2057,7 @@ void main() {
       expect(find.byKey(const ValueKey('proje-ana-dagitim')), findsNothing);
       await tester.tap(find.text('Proje'));
       await bekle();
-      await tester.tap(find.text('Dağıtım / Yazdırma'));
+      await tester.tap(find.text('Değerlendirme'));
       await bekle();
       expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
       await tester.tap(find.byTooltip('Proje taleplerine dön'));
@@ -2247,7 +2247,7 @@ void main() {
       await bekle();
       await tester.tap(find.text('Özet'));
       await bekle();
-      await tester.tap(find.text('Dağıtım / Yazdırma'));
+      await tester.tap(find.text('Değerlendirme'));
       await bekle();
       expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
       await capture('${width.toInt()}-5-degerlendirme');
