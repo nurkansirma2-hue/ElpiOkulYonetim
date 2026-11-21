@@ -2643,6 +2643,81 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
         }, ikincil: true),
     ],
   );
+  // Dört ana sekme mevcut form, yanıt ve dağıtım kayıtlarını değiştirmez.
+  int get _ustSekme {
+    if (ekran == 0 || (ekran == 1 && sekme == 0)) return 0;
+    if (ekran == 1 && sekme == 1) return 1;
+    if (ekran == 2) return 2;
+    return 3;
+  }
+
+  Future<void> _ustSekmeyeGit(int secim) async {
+    if (secim == 2) {
+      await _tercihleriAc();
+      return;
+    }
+    if (secim == 0 || secim == 1) {
+      ekran = 1;
+      sekme = secim;
+      _yanitSeciminiKapat();
+      if (secim == 1) {
+        await _yanitAlimiDurumunuKontrolEt();
+        if (dogrudanIsteniyor) await _dogrudanYukle();
+      }
+      return;
+    }
+    ekran = 3;
+    _yanitSeciminiKapat();
+  }
+
+  Widget _dortSekmeCubugu() {
+    const adlar = [
+      'Özet',
+      'Yanıtlar',
+      'Onay / \nDüzenleme',
+      'Dağıtım / \nYazdırma',
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(children: [
+        for (var i = 0; i < 4; i++)
+          Expanded(
+            child: InkWell(
+              key: ValueKey('proje-ust-sekme-$i'),
+              onTap: busy ? null : () => _is(() => _ustSekmeyeGit(i)),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 54),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
+                decoration: BoxDecoration(
+                  color: _ustSekme == i
+                      ? const Color(0xffdce9fb) : Colors.white,
+                  border: Border.all(color: const Color(0xffa4b3c8)),
+                  borderRadius: BorderRadius.horizontal(
+                    left: i == 0 ? const Radius.circular(18) : Radius.zero,
+                    right: i == 3 ? const Radius.circular(18) : Radius.zero,
+                  ),
+                ),
+                child: Text(
+                  adlar[i],
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    height: 1.15,
+                    color: const Color(0xff152951),
+                    fontWeight: _ustSekme == i
+                        ? FontWeight.w700 : FontWeight.w400,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
   Widget _yanitlar() {
     final toplam = (proje!['ogrenciler'] as List).length;
     final alinan = tercihler
@@ -2653,49 +2728,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SegmentedButton<int>(
-          showSelectedIcon: false,
-          segments: const [
-            ButtonSegment(
-              value: 0,
-              label: Text('Özet', maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-            ButtonSegment(
-              value: 1,
-              label: Text(
-                'Yanıtlar',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            ButtonSegment(
-              value: 2,
-              tooltip: 'Değerlendirme',
-              label: Text(
-                'Değerlendirme',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-          selected: {sekme},
-          onSelectionChanged: busy
-              ? null
-              : (s) => _is(() async {
-                  if (s.single == 2) {
-                    // Değerlendirmede ilk adım doğrudan Tercih Kontrolü.
-                    await _tercihleriAc();
-                    return;
-                  }
-                  sekme = s.single;
-                  _yanitSeciminiKapat();
-                  if (sekme == 1) {
-                    await _yanitAlimiDurumunuKontrolEt();
-                    if (dogrudanIsteniyor) await _dogrudanYukle();
-                  }
-                }),
-        ),
-        const SizedBox(height: 12),
         if (dogrudanUyari != null) _bilgi(dogrudanUyari!),
         if (sekme == 1 && form?['GoogleFormId'] != null)
           Card(
@@ -3703,7 +3735,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   @override
   Widget build(BuildContext context) {
     final detay = proje != null && !yeni;
-    final ad = !yeni && detay && (ekran == 3 || ekran == 1 && sekme == 2)
+    final ad = !yeni && detay && ekran == 3
         ? 'Dağıtım / Yazdırma'
         : yeni
         ? [
@@ -3793,48 +3825,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             if (yeni)
               _yeniIcerik()
             else if (detay) ...[
-              Align(
-                alignment: Alignment.centerRight,
-                child: PopupMenuButton<int>(
-                  tooltip: 'İşlem değiştir',
-                  key: ValueKey(ekran),
-                  enabled: !busy,
-                  itemBuilder: (_) => [
-                    for (final item in const [
-                      (0, 'Form Talebi'),
-                      (1, 'Yanıtlar'),
-                      (2, 'Onay / Düzenleme'),
-                      (3, 'Dağıtım / Yazdırma'),
-                      (7, 'Bilgilendirme'),
-                    ])
-                      PopupMenuItem(
-                        value: item.$1,
-                        child: Text(item.$2),
-                      ),
-                  ],
-                  onSelected: (v) {
-                    if (v == 2) {
-                      _is(_tercihleriAc);
-                    } else {
-                      setState(() {
-                        ekran = v;
-                        _yanitSeciminiKapat();
-                      });
-                    }
-                  },
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 6),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('İşlem değiştir'),
-                        Icon(Icons.expand_more),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
+              _dortSekmeCubugu(),
               if (ekran == 0) _davet(),
               if (ekran == 1) _yanitlar(),
               if (ekran == 2) _kontrolEkrani(),
