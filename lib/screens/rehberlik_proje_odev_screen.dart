@@ -3196,7 +3196,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                       ),
                       const SizedBox(height: 12),
                       const Text(
-                        '• Önce 1., sonra 2. ve 3. tercihler\n• Her öğrenciye 1 proje dersi\n• Eşitlikte okul numarası sırası',
+                        '• Her tercih turunda en az tercih edilen dersten başlanır\n• Ders sayısı eşitse alfabetik sıra kullanılır\n• Aynı dersi isteyenlerde okul numarası önceliklidir\n• Tercih dışı atama yapılmaz',
                       ),
                     ],
                   ),
@@ -3691,7 +3691,11 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                 Card(
                   key: ValueKey('proje-form-${p['formId']}'),
                   clipBehavior: Clip.antiAlias,
-                  child: Column(
+                  child: InkWell(
+                    onLongPress: busy || salt
+                        ? null
+                        : () => _formSec(p['formId'] as int),
+                    child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       ListTile(
@@ -3714,9 +3718,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                         trailing: formSecimModu
                             ? null
                             : const Icon(Icons.chevron_right),
-                        onLongPress: busy || salt
-                            ? null
-                            : () => _formSec(p['formId'] as int),
                         onTap: busy
                             ? null
                             : () => formSecimModu
@@ -3770,6 +3771,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                         ),
                       ],
                     ],
+                  ),
                   ),
                 ),
               if (talepler.isEmpty)
