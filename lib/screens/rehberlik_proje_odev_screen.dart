@@ -1729,10 +1729,50 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     return true;
   }
 
+  Future<void> _kontenjanOnerisiniUygula() async {
+    final mevcutPlan = plan;
+    if (!kontenjan || mevcutPlan == null) return;
+    final artislar = Map<String, dynamic>.from(
+      mevcutPlan['kontenjanOnerisi'] as Map? ?? {},
+    );
+    if (artislar.isEmpty) return;
+    final aciklama = artislar.entries.map((e) {
+      final id = int.parse(e.key);
+      final eski = kapasite[id] ?? 0;
+      return '${projeDersleri[id]}: $eski → ${eski + (e.value as int)}';
+    }).join('\n');
+    final kimlik = formId;
+    if (!await _onay(
+      'Kontenjan artırma önerisi',
+      'Öğrenciler tercih etmedikleri derslere atanmayacak. '
+      'Açıkta kalan geçerli ve onaylı öğrenciler için şu kontenjanları '
+      'artırmayı öneriyorum:\n\n$aciklama\n\n'
+      'Onaylarsanız yalnız bu ekrandaki kontenjanlar değiştirilerek '
+      'dağıtım yeniden hesaplanacak. Kesin kayıt için ayrıca '
+      'Dağıtımı Onayla gerekir.',
+    )) {
+      return;
+    }
+    await _kontrol();
+    if (proje == null || formId != kimlik || !identical(plan, mevcutPlan)) {
+      throw StateError('Dağıtım veya proje değişti; öneriyi yeniden hesaplayın.');
+    }
+    for (final e in artislar.entries) {
+      final id = int.parse(e.key);
+      kapasite[id] = (kapasite[id] ?? 0) + (e.value as int);
+    }
+    kapasiteSurumu++;
+    await _dagit();
+    dagitimAsamasi = 1;
+  }
+
   Future<void> _otomatikDagit() async {
     if (!await _dagitimTercihleriniHazirla()) return;
     await _dagit();
     dagitimAsamasi = 1;
+    if (kontenjan && (plan?['kontenjanOnerisi'] as Map? ?? {}).isNotEmpty) {
+      await _kontenjanOnerisiniUygula();
+    }
   }
 
   Future<void> _manuel() async {
@@ -2947,6 +2987,27 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   : 'Dağıtımı yeniden hazırlayın.',
             ),
           ]),
+          if (kontenjan &&
+              plan != null &&
+              (plan!['kontenjanOnerisi'] as Map? ?? {}).isNotEmpty)
+            _kart('Kontenjan Artırma Önerisi', Icons.info_outline, [
+              const Text(
+                'Açıkta kalan geçerli öğrenciler için tercih dışı atama '
+                'yapılmayacak. Önerilen ek kontenjanları onaylayıp '
+                'dağıtımı yeniden hesaplayabilirsiniz.',
+              ),
+              for (final e in (plan!['kontenjanOnerisi'] as Map).entries)
+                Text(
+                  '${projeDersleri[int.parse(e.key as String)]}: '
+                  '+${e.value} öğrenci',
+                ),
+              _buton(
+                'Önerilen Kontenjanları Uygula',
+                Icons.add_circle_outline,
+                _kontenjanOnerisiniUygula,
+                ikincil: true,
+              ),
+            ]),
           _kart('Öğrenci Sonuçları', Icons.groups_outlined, [
             for (final r in tercihler)
               ListTile(
