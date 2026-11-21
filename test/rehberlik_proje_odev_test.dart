@@ -807,6 +807,70 @@ void main() {
       );
     },
   );
+  test(
+    'Google tam liste ve tekli sorgu çelişirse SQLite korunur',
+    () async {
+      await yanit(1, [1, 2, 3], id: 'kalan');
+      await yanit(1, [2, 1, 3], id: 'silinen');
+      final rows = await db.query('BilgiToplamaYanit', where: 'FormId=?',
+          whereArgs: [fid]);
+      final kalan = jsonDecode(rows.singleWhere(
+        (r) => r['GoogleYanitId'] == 'kalan',
+      )['HamYanit'] as String);
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/responses')) {
+          return http.Response(jsonEncode({'responses': [kalan]}), 200);
+        }
+        if (request.url.path.endsWith('/responses/silinen')) {
+          return http.Response(jsonEncode({
+            'formId': 'google-proje-form',
+            'responseId': 'silinen',
+          }), 200);
+        }
+        return http.Response(jsonEncode({'formId': 'google-proje-form'}), 200);
+      });
+      addTearDown(client.close);
+      await expectLater(
+        fs.googleYanitlariniAl(fb, fid, erisimBelirteci: 'test',
+            google: RehberlikGoogleFormService(client: client)),
+        throwsA(isA<StateError>().having(
+          (e) => e.toString(), 'mesaj', contains('uyuşmuyor'))),
+      );
+      expect(await fs.yanitlar(fb, fid), hasLength(2));
+      expect((await s.projeTercihleri(b, 1, fid)).first['hatalar'],
+          contains('Aynı öğrenciye ait birden fazla yanıt var. Ortak formdan inceleyin.'));
+    },
+  );
+
+  test(
+    'Google tam liste ve tekli 404 doğrulanırsa eski aktif yanıt temizlenir',
+    () async {
+      await yanit(1, [1, 2, 3], id: 'kalan');
+      await yanit(1, [2, 1, 3], id: 'silinen');
+      final rows = await db.query('BilgiToplamaYanit', where: 'FormId=?',
+          whereArgs: [fid]);
+      final kalan = jsonDecode(rows.singleWhere(
+        (r) => r['GoogleYanitId'] == 'kalan',
+      )['HamYanit'] as String);
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/responses')) {
+          return http.Response(jsonEncode({'responses': [kalan]}), 200);
+        }
+        if (request.url.path.endsWith('/responses/silinen')) {
+          return http.Response('{}', 404);
+        }
+        return http.Response(jsonEncode({'formId': 'google-proje-form'}), 200);
+      });
+      addTearDown(client.close);
+      await fs.googleYanitlariniAl(fb, fid, erisimBelirteci: 'test',
+          google: RehberlikGoogleFormService(client: client));
+      expect(await fs.yanitlar(fb, fid), hasLength(1));
+      final sonuc = await s.projeTercihleri(b, 1, fid);
+      expect(sonuc.first['hatalar'], isEmpty);
+      expect((await db.query('BilgiToplamaYanit',
+          where: 'FormId=?', whereArgs: [fid])), hasLength(2));
+    },
+  );
   test('silinen ve reddedilen yanıtlar tercih onayına alınmaz', () async {
     await yanit(1, [1, 2, 3]);
     final r = (await s.projeTercihleri(b, 1, fid)).first;
