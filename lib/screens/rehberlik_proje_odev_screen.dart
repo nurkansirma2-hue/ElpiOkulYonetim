@@ -19,7 +19,6 @@ import '../services/proje_odev_rapor_service.dart';
 import '../widgets/ortak_ui.dart';
 import '../widgets/modul_ust_bar.dart';
 import '../widgets/mesaj_alici_secim_sliver.dart';
-import 'bireysel_bilgi_toplama_screen.dart';
 import 'mesajlasma_screen.dart';
 
 /// Mevcut Forms API, kimlik anlık görüntüsü, alıcı seçimi ve mesaj motorunun
@@ -1122,23 +1121,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       dogrudanSecim[id] = jsonEncode(row);
     }
   });
-
-  Future<void> _ortakForm() async {
-    if (!mounted) return;
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => BireyselBilgiFormDetayScreen(
-          service: fs,
-          baglam: fb!,
-          formId: formId,
-          google: google,
-          hesapBagla: widget.hesapBagla,
-        ),
-      ),
-    );
-    if (mounted) await _is(_yukle);
-  }
 
   Future<void> _onayla() async {
     if (!await _onay(
@@ -4018,7 +4000,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             ],
           ] else if (ekran == 2 && !salt) ...[
             _buton('Google Yanıtlarını Yenile', Icons.refresh, _yanitAl),
-            _buton('Düzenle', Icons.edit_outlined, _ortakForm, ikincil: true),
             _buton('Geçerlileri seç', Icons.checklist, () async {
               onaySecimi
                 ..clear()
