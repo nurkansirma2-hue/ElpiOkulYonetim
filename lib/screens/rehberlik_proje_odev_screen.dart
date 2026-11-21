@@ -693,6 +693,25 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     plan = null;
   }
 
+  // Tercih denetiminden önce Google'daki silmeleri yerel kayda yansıt.
+  // Ağ/izin hatasında yerel verileri silme; eski durumun doğrulanamadığını bildir.
+  Future<void> _tercihleriAc() async {
+    if (!salt && form?['Durum'] == 'Aktif') {
+      try {
+        await _yanitAl();
+      } catch (e) {
+        await _yukle();
+        hata =
+            'Google yanıtları güncellenemedi; eski kayıtlar korunuyor. '
+            'Mükerrer yanıt durumu henüz doğrulanmadı. Orijinal hata: $e';
+      }
+    } else {
+      await _yukle();
+    }
+    ekran = 2;
+    _yanitSeciminiKapat();
+  }
+
   Future<void> _dogrudanYukle() async {
     await _kontrol();
     final fid = formId;
@@ -2416,9 +2435,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               _buton(
                 'Tercihleri Kontrol Et',
                 Icons.fact_check_outlined,
-                () async {
-                  ekran = 2;
-                },
+                _tercihleriAc,
                 ikincil: true,
               ),
               _buton('Ders Dağıtımı', Icons.school_outlined, () async {
@@ -3126,10 +3143,16 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                         ),
                       ),
                   ],
-                  onSelected: (v) => setState(() {
-                    ekran = v;
-                    _yanitSeciminiKapat();
-                  }),
+                  onSelected: (v) {
+                    if (v == 2) {
+                      _is(_tercihleriAc);
+                    } else {
+                      setState(() {
+                        ekran = v;
+                        _yanitSeciminiKapat();
+                      });
+                    }
+                  },
                   child: const Padding(
                     padding: EdgeInsets.symmetric(vertical: 6),
                     child: Row(
@@ -3327,6 +3350,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               ),
             ],
           ] else if (ekran == 2 && !salt) ...[
+            _buton('Google Yanıtlarını Yenile', Icons.refresh, _yanitAl),
             _buton('Düzenle', Icons.edit_outlined, _ortakForm, ikincil: true),
             _buton('Geçerlileri seç', Icons.checklist, () async {
               onaySecimi
