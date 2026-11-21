@@ -2961,6 +2961,17 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
           'Üç farklı ders zorunludur. Yeni yanıtlar onaylı tercihleri veya kesin dağıtımı sessizce değiştirmez.',
           uyari: h > 0,
         ),
+        if (atamaListesiHazir)
+          Card(
+            color: const Color(0xffe7f6e9),
+            child: ListTile(
+              leading: const Icon(Icons.check_circle, color: Color(0xff008a24)),
+              title: const Text('Ders atamaları oluşturuldu'),
+              subtitle: Text('${analiz!['yerlesen']} öğrenci yerleştirildi.'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => setState(() => ekran = 5),
+            ),
+          ),
         for (final r in tercihler.where(
           (r) =>
               (!sadeceHata ||
@@ -3501,6 +3512,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             'Tercihleri Kontrol Et',
             'Proje Derslerini Dağıt',
             'Liste ve Rapor Oluştur',
+            'Atama Listesi',
+            'Öğretmen Mesajları',
           ][ekran]
         : 'Form Talepleri';
     return PopScope(
@@ -3580,7 +3593,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   key: ValueKey(ekran),
                   enabled: !busy,
                   itemBuilder: (_) => [
-                    for (var i = 0; i < 5; i++)
+                    for (var i = 0; i < 7; i++)
                       PopupMenuItem(
                         value: i,
                         child: Text(
@@ -3590,6 +3603,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                             'Tercih Kontrolü',
                             'Ders Dağıtımı',
                             'Liste ve Raporlar',
+                            'Atama Listesi',
+                            'Öğretmen Mesajları',
                           ][i],
                         ),
                       ),
@@ -3622,6 +3637,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               if (ekran == 2) _kontrolEkrani(),
               if (ekran == 3) _dagitim(),
               if (ekran == 4) _raporlar(),
+              if (ekran == 5) _atamaListesi(),
+              if (ekran == 6) _ogretmenMesajlari(),
             ] else ...[
               if (formSecimModu)
                 Row(
@@ -3847,6 +3864,26 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             ),
           ] else if (ekran == 3 && !salt) ...[
             ..._dagitimButonlari(),
+          ] else if (ekran == 5 && !salt) ...[
+            _buton(
+              'Tüm Öğretmenlere Mesaj Hazırla',
+              Icons.send_outlined,
+              () async { ekran = 6; },
+              etkin: atamaListesiHazir,
+            ),
+            _buton(
+              'PDF / Yazdır',
+              Icons.print_outlined,
+              () => _export('pdf'),
+              ikincil: true,
+            ),
+          ] else if (ekran == 6 && !salt) ...[
+            _buton(
+              'Atama Listesine Dön',
+              Icons.list_alt,
+              () async { ekran = 5; },
+              ikincil: true,
+            ),
           ] else if (ekran == 4) ...[
             _buton(
               'Excel',
