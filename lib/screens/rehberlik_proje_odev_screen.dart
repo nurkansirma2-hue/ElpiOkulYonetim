@@ -491,13 +491,17 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     if (!formSecimi.add(id)) formSecimi.remove(id);
   });
 
-  Future<void> _formAc(Map<String, dynamic> p, {int islem = 1}) async {
+  Future<void> _formAc(
+    Map<String, dynamic> p, {
+    int islem = 1,
+    int? seciliSekme,
+  }) async {
     dogrudanYanitlar = null;
     dogrudanUyari = null;
     _formSeciminiKapat();
     _yanitSeciminiKapat();
     onaySecimi.clear();
-    sekme = 0;
+    sekme = seciliSekme ?? 0;
     googleYanitAcik = null;
     proje = p;
     ekran = islem;
@@ -1788,6 +1792,36 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     if (mounted) await _yukle();
   }
 
+  Future<void> _dersListesiniAc(Map<String, dynamic> ders) async {
+    if (!atamaListesiHazir) {
+      throw StateError('Kesin atama listesi güncel değil.');
+    }
+    final rows = (analiz!['ogrenciler'] as List)
+        .cast<Map<String, dynamic>>()
+        .where((r) => r['dersId'] == ders['dersId'])
+        .toList();
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => OrtakSayfa(
+        appBar: ModulUstBar(title: Text('${ders['dersAdi']} • Atama Listesi')),
+        body: ListView(padding: const EdgeInsets.all(12), children: [
+          Text(
+            '${widget.atama['SinifKodu']} • ${rows.length} öğrenci',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          for (final r in rows)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.person_outline),
+                title: Text('${r['OkulNo']} • ${r['Ad']} ${r['Soyad']}'),
+                subtitle: Text('${r['yerlesmeSirasi']}. tercihine yerleşti'),
+              ),
+            ),
+        ]),
+      ),
+    ));
+  }
+
   Widget _atamaListesi() {
     if (!atamaListesiHazir) {
       return _bilgi(
@@ -1829,6 +1863,12 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                 () => _ogretmeneSonucMesaji(ders['dersId'] as int),
                 ikincil: true,
                 etkin: (ders['ogretmenler'] as List).isNotEmpty,
+              ),
+              _buton(
+                'Listeyi Aç',
+                Icons.open_in_new,
+                () => _dersListesiniAc(ders),
+                ikincil: true,
               ),
               _buton(
                 'Öğretmen Eşleştir',
@@ -3805,7 +3845,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                             _buton(
                               'Yanıtlar',
                               Icons.list_alt,
-                              () => _formAc(p, islem: 1),
+                              () => _formAc(p, islem: 1, seciliSekme: 1),
                               ikincil: true,
                             ),
                             if (p['sonuclandi'] == true)
