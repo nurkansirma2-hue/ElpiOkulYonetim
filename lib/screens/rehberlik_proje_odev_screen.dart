@@ -2154,6 +2154,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
         '3. Tercih',
         tur == 0 ? 'Kontrol' : 'Atanan ders',
         if (tur == 3) 'Takip',
+        if (tur == 1) 'Öğrenci İmzası',
       ]);
       for (final r in tercihler) {
         final ts = (r['tercihler'] as List).cast<int>();
@@ -2168,6 +2169,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               : (ds[dag['${r['OgrenciId']}']] ?? 'Yerleşmedi'),
           if (tur == 3)
             r['onayli'] == true ? 'Tercih onaylandı' : 'Kontrol bekliyor',
+          if (tur == 1) '', // Basılı çıktıda öğrenci imzalayacak.
         ]);
       }
       if (tur == 1) {
@@ -3563,6 +3565,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             'Liste ve Rapor Oluştur',
             'Atama Listesi',
             'Öğretmen Mesajları',
+            'Bilgilendirme',
           ][ekran]
         : 'Formlarım';
     return PopScope(
@@ -3642,20 +3645,16 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   key: ValueKey(ekran),
                   enabled: !busy,
                   itemBuilder: (_) => [
-                    for (var i = 0; i < 7; i++)
+                    for (final item in const [
+                      (0, 'Form Talebi'),
+                      (1, 'Yanıtlar'),
+                      (2, 'Onay / Düzenleme'),
+                      (3, 'Dağıtım / Yazdırma'),
+                      (7, 'Bilgilendirme'),
+                    ])
                       PopupMenuItem(
-                        value: i,
-                        child: Text(
-                          [
-                            'Form Daveti',
-                            'Yanıtlar',
-                            'Tercih Kontrolü',
-                            'Ders Dağıtımı',
-                            'Liste ve Raporlar',
-                            'Atama Listesi',
-                            'Öğretmen Mesajları',
-                          ][i],
-                        ),
+                        value: item.$1,
+                        child: Text(item.$2),
                       ),
                   ],
                   onSelected: (v) {
@@ -3684,10 +3683,11 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               if (ekran == 0) _davet(),
               if (ekran == 1) _yanitlar(),
               if (ekran == 2) _kontrolEkrani(),
-              if (ekran == 3) _dagitim(),
+              if (ekran == 3) _dagitimYazdirma(),
               if (ekran == 4) _raporlar(),
               if (ekran == 5) _atamaListesi(),
               if (ekran == 6) _ogretmenMesajlari(),
+              if (ekran == 7) _bilgilendirme(),
             ] else ...[
               if (formSecimModu)
                 Row(
