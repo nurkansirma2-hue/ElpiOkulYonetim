@@ -1738,6 +1738,24 @@ void main() {
     await bekle();
     expect(find.text('Sonuçlandırıldı'), findsOneWidget);
     await capture('400-5-degerlendirme-sonuc');
+    // Kesin dağıtımın yeni Atama Listesi'nde görünmesi.
+    await tester.tap(find.text('İşlem değiştir'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Atama Listesi').last);
+    await bekle();
+    expect(find.text('Ders atamaları kesinleştirildi • 3 öğrenci yerleştirildi.'),
+        findsOneWidget);
+    expect(find.textContaining('101 • Öğrenci1'), findsWidgets);
+    final tumMesajlar = find.text('Tüm Öğretmenlere Mesaj Hazırla');
+    await tester.ensureVisible(tumMesajlar);
+    await tester.tap(tumMesajlar);
+    await bekle();
+    expect(find.text('Öğretmen'), findsWidgets);
+    expect(find.text('Mesajı Düzenle / Gönderime Geç'), findsWidgets);
+    await tester.tap(find.text('İşlem değiştir'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Değerlendirme').last);
+    await bekle();
     final mesaj = find.widgetWithText(FilledButton, 'Öğretmene Mesaj').first;
     await tester.ensureVisible(mesaj);
     await tester.pumpAndSettle();
