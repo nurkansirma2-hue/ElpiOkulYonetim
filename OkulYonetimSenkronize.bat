@@ -1,12 +1,13 @@
 @echo off
 setlocal EnableExtensions
 chcp 65001 >nul
-title ElpiOkulYonetim - Guvenli GitHub Senkronizasyon V18
-rem SYNC_VERSION: 18
-rem Bu surum inceleme + acik YAZ onayiyla GITHUB'A GONDERME icindir.
-rem GitHub'dan otomatik pull/rebase, reset, stash, git init veya remote degisikligi YAPMAZ.
+title ElpiOkulYonetim - Guvenli GitHub Senkronizasyon V21
+rem SYNC_VERSION: 21
+rem V21: AL cakismasiz fast-forward; YAZ sadece onizlenen uygun dosyalari gonderir.
+rem Ana OkulYonetimSenkronize.bat dosyasi da acik YAZ onayiyla guncellenebilir.
+rem Otomatik reset, stash, rebase, force-push veya remote degisikligi YAPMAZ.
 set "SYNC_BAT=%~f0"
-set "SYNC_PS=%TEMP%\ElpiOkulYonetim_Sync_V18_%RANDOM%_%RANDOM%.ps1"
+set "SYNC_PS=%TEMP%\ElpiOkulYonetim_Sync_V21_%RANDOM%_%RANDOM%.ps1"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $s=[IO.File]::ReadAllText($env:SYNC_BAT); $m=[regex]::Match($s,'(?m)^#===POWERSHELL_BASLANGIC===\r?$'); if(!$m.Success){throw 'Gomulu betik bulunamadi'}; [IO.File]::WriteAllText($env:SYNC_PS,$s.Substring($m.Index+$m.Length),[Text.UTF8Encoding]::new($true))"
 if errorlevel 1 goto FAIL
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SYNC_PS%"
@@ -58,7 +59,7 @@ function Forbidden([string]$path) {
         $p -match '(?i)^elpi_okul_yonetim/' -or
         $p -match '(?i)^(linux|windows)/flutter/generated_plugin_registrant\.(cc|h)$' -or
         $p -match '(?i)^(linux|windows)/flutter/generated_plugins\.cmake$' -or
-        ($p -match '(?i)^OkulYonetimSenkronize_Guvenli_V[0-9]+\.bat$' -and $p -ine 'OkulYonetimSenkronize_Guvenli_V18.bat')
+        ($p -match '(?i)^OkulYonetimSenkronize_Guvenli_V[0-9]+\.bat$')
 }
 function RemoteHead([string]$branch) {
     $results = @(RunGit -GitArgs @('ls-remote','--heads','origin',('refs/heads/' + $branch)))
@@ -82,101 +83,160 @@ try {
     if ($origin -notin $allowedRemotes) { throw ('Origin beklenen depo degil: ' + $origin) }
     $pushUrls = @(RunGit -GitArgs @('remote','get-url','--push','--all','origin'))
     if ($pushUrls.Count -ne 1 -or $pushUrls[0] -notin $allowedRemotes) { throw 'Push adresi beklenen GitHub deposu degil.' }
-    # Mevcut staging'e dokunulmaz.
-    & git.exe diff --cached --quiet
-    if ($LASTEXITCODE -ne 0) { throw 'Staging alaninda onceden hazirlanmis dosyalar var; korunarak durduruldu.' }
     $step = 'Onizleme'
-    Note '=== SALT OKUNUR ONIZLEME: HENUZ HICBIR DOSYA/GIT KAYDI DEGISTIRILMEDI ==='
+    Note '=== GUVENLI ONIZLEME: HENUZ PROJE DOSYALARI/GIT KAYDI DEGISTIRILMEDI ==='
     Note ('Yerel proje: ' + $repo)
-    Note ('Islem yonu: YEREL -> GITHUB (' + $branch + ')')
     Note ('GitHub adresi: ' + $origin)
+    Note ('Aktif dal: ' + $branch)
     $status = @(RunGit -GitArgs @('status','--short','--untracked-files=all'))
     Note ('Yerel degisiklik satiri: ' + $status.Count)
     foreach ($line in $status) { Note ('  ' + $line) }
-    $changed = @(RunGit -GitArgs @('ls-files','--modified','--deleted','--others','--exclude-standard')) | Where-Object { $_ }
-    if (@($changed | Where-Object { $_.StartsWith('"') -or $_ -match '[\r\n\t]' }).Count) {
-        throw 'Kontrol karakterli veya Git tarafindan tirnaklanan dosya adi var; guvenli inceleme icin durduruldu.'
+    $staged = @(RunGit -GitArgs @('diff','--cached','--name-only','--no-renames')) | Where-Object { $_ }
+    $unstaged = @(RunGit -GitArgs @('diff','--name-only','--no-renames')) | Where-Object { $_ }
+    $untracked = @(RunGit -GitArgs @('ls-files','--others','--exclude-standard')) | Where-Object { $_ }
+    $changed = @($staged + $unstaged + $untracked | Sort-Object -Unique)
+    if (@($changed | Where-Object { $_.StartsWith('"') -or $_ -match '[
+	]' }).Count) {
+        throw 'Ozel karakterli/quoted dosya adlari var; elle inceleme gerekli.'
     }
-    # Yalniz takip EDILMEYEN uretilmis dosyalari sessizce degil, raporlayarak haric tut.
-    # Onceden Git tarafindan izlenen riskli dosyalara dokunma; inceleme icin durdur.
-    $trackedChanges = @(RunGit -GitArgs @('ls-files','--modified','--deleted')) | Where-Object { $_ }
+    $blockedStaged = @($staged | Where-Object { Forbidden $_ })
+    $trackedChanges = @($staged + $unstaged | Sort-Object -Unique)
     $blockedTracked = @($trackedChanges | Where-Object { Forbidden $_ })
     $excluded = @($changed | Where-Object { Forbidden $_ })
     $eligible = @($changed | Where-Object { -not (Forbidden $_) })
-    if ($excluded.Count) { Note ('HARIC TUTULAN (gonderilmeyecek) dosyalar: ' + ($excluded -join ', ')) }
+    if ($excluded.Count) { Note ('HARIC/KORUMALI: ' + ($excluded -join ', ')) }
     Note ('Gonderime uygun degisen dosya sayisi: ' + $eligible.Count)
-    foreach ($path in $eligible) { Note ('  UYGUN: ' + $path) }
-    $deleted = @(RunGit -GitArgs @('ls-files','--deleted'))
-    if ($deleted.Count -ge 20) { throw '20 veya daha fazla takip edilen dosya silinmis; toplu silme riski nedeniyle durduruldu.' }
+    foreach ($path in $eligible) { Note ('  UYGUN: ' + $path + $(if ($staged -ccontains $path) { ' [STAGED]' } else { '' })) }
+    $deleted = @(RunGit -GitArgs @('diff','--name-only','--diff-filter=D','HEAD'))
+    if ($deleted.Count -ge 20) { throw '20 veya daha fazla takip edilen dosya silinmis; elle inceleme gerekir.' }
     $remoteBefore = RemoteHead $branch
     $localHead = GitText -GitArgs @('rev-parse','HEAD')
     Note ('Yerel HEAD: ' + $localHead)
     Note ('GitHub HEAD: ' + $remoteBefore)
-    Note 'UYARI: Bu arac otomatik pull, rebase, reset, stash, force push veya dal degisikligi YAPMAZ.'
-    Note 'UYARI: Islemden once yerel farklar ve eski commitler incelenmelidir.'
-    Note 'UYARI: YAZ onayindan sonra yeni commit ve normal push yapilabilir.'
-    if ($blockedTracked.Count) { throw ('Git tarafindan takip edilen korumali dosyalar degismis; inceleme gerekli: ' + ($blockedTracked -join ', ')) }
-    # Once uzak dalin yerelde bilinen ve HEAD ile uyumlu olmasini sagla.
-    # fetch sadece uzak izleme referansini degistirir; onay oncesi bunu da YAPMIYORUZ.
-    $knownRemote = @(& git.exe rev-parse --verify --quiet ('refs/remotes/origin/' + $branch) 2>$null)
-    if ($LASTEXITCODE -ne 0 -or $knownRemote.Count -ne 1 -or $knownRemote[0].Trim() -ne $remoteBefore) {
-        throw 'GitHub dali yereldeki origin referansi ile ayni degil. Guvenli olarak durduruldu; once ayri inceleme/senkronizasyon gerekiyor.'
+    Note 'GitHub -> Yerel: Yerel degisiklikler korunarak, yalniz cakismasiz fast-forward; YAZ yetkisi sayilmaz.'
+    Note 'Yerel -> GitHub: Yalniz UYGUN dosyalar, mevcut staged dahil; YAZ onayi zorunlu.'
+    Note 'Reset, rebase, stash, force push, git clean ve otomatik silme YOK.'
+    # Remote commit local object database'de yoksa merge-base sonucuna guvenmeyiz.
+    # AL, fetch sonrasi --ff-only ile yerel degisiklikleri korur.
+    if ($remoteBefore -ne $localHead) {
+        Note 'FARKLI HEAD: GitHub degisiklikleri varsa AL ile fast-forward denenebilir; ayrisma varsa durur.'
     }
-    & git.exe merge-base --is-ancestor $remoteBefore HEAD
-    if ($LASTEXITCODE -ne 0) { throw 'GitHub degisiklikleri yerelde yok veya tarih ayrismis. Pull/rebase otomatik yapilmadi.' }
-    $pending = [int](GitText -GitArgs @('rev-list','--count',($remoteBefore + '..HEAD')))
-    Note ('GitHub icin bekleyen yerel commit: ' + $pending)
-    if ($pending -gt 0) {
-        # Olasi sirlarin veya 100 MB bloblarin onceki commitlerden yuklenmesini engelle.
-        $pendingPaths = @(RunGit -GitArgs @('log','--format=','--name-only','--no-renames',($remoteBefore + '..HEAD'))) | Where-Object { $_ }
-        $badHistory = @($pendingPaths | Where-Object { Forbidden $_ })
-        if ($badHistory.Count) { throw ('Gonderilmeyi bekleyen Git gecmisinde yasakli dosya var: ' + ($badHistory -join ', ')) }
-        $objects = @(RunGit -GitArgs @('rev-list','--objects',($remoteBefore + '..HEAD')))
-        foreach ($entry in $objects) {
-            $oid = ($entry -split ' ',2)[0]
-            if ((GitText -GitArgs @('cat-file','-t',$oid)) -eq 'blob' -and [long](GitText -GitArgs @('cat-file','-s',$oid)) -ge 100000000L) {
-                throw ('Gonderilecek gecmiste 100 MB veya buyuk blob var: ' + $oid)
+    $answer = (Read-Host 'Secim: GitHub dan guncellemek icin AL / Yereli gondermek icin YAZ / vazgec Enter').Trim()
+    if ($answer -ceq 'AL') {
+        $step = 'AL oncesi kontrol'
+        # Yereldeki alakasiz makine dosyalari ve takip edilen dosyalar korunur.
+        # Cakisma kontrolu fetch sonrasi GitHub'dan gelen gercek dosya listesine gore yapilir.
+        CheckBusy
+        if ((GitText -GitArgs @('rev-parse','HEAD')) -ne $localHead) { throw 'Yerel HEAD onizlemeden sonra degisti.' }
+        if ((RemoteHead $branch) -ne $remoteBefore) { throw 'GitHub onizlemeden sonra degisti; yeniden calistirin.' }
+        $step = 'GitHub fetch'
+        RunGit -GitArgs @('fetch','--no-tags','origin',('refs/heads/' + $branch)) | Out-Null
+        $fetchHead = GitText -GitArgs @('rev-parse','FETCH_HEAD')
+        if ($fetchHead -ne $remoteBefore) { throw 'Fetch sonucu beklenen commit degil; birlestirme yapilmadi.' }
+        & git.exe merge-base --is-ancestor $localHead $fetchHead
+        if ($LASTEXITCODE -ne 0) { throw 'Git gecmisleri ayrismis (fast-forward mumkun degil); merge/rebase yapilmadi.' }
+        $step = 'Cakisma kontrolu'
+        # GitHub tarafindan degisecek dosyalar ve yerel staged/unstaged/untracked dosyalar
+        # ayniysa (veya dosya/klasor yolu cakisiyorsa) en ufak riskte dur.
+        $incoming = @(RunGit -GitArgs @('diff','--name-only','--no-renames',$localHead,$fetchHead)) | Where-Object { $_ }
+        $currentTracked = @(@(RunGit -GitArgs @('diff','--cached','--name-only','--no-renames')) + @(RunGit -GitArgs @('diff','--name-only','--no-renames')) | Where-Object { $_ })
+        $currentUntracked = @(RunGit -GitArgs @('ls-files','--others','--exclude-standard')) | Where-Object { $_ }
+        $localPaths = @($currentTracked + $currentUntracked | Sort-Object -Unique)
+        $conflicts = @(
+            foreach ($remotePath in $incoming) {
+                $normalizedRemote = $remotePath.Replace('\','/')
+                foreach ($localPath in $localPaths) {
+                    $normalizedLocal = $localPath.Replace('\','/')
+                    if ($normalizedRemote -ieq $normalizedLocal -or
+                        $normalizedRemote.StartsWith(($normalizedLocal + '/'),[StringComparison]::OrdinalIgnoreCase) -or
+                        $normalizedLocal.StartsWith(($normalizedRemote + '/'),[StringComparison]::OrdinalIgnoreCase)) {
+                        $remotePath
+                        break
+                    }
+                }
+            }
+        )
+        if ($conflicts.Count) {
+            Note ('CAKISAN DOSYALAR: ' + ($conflicts -join ', '))
+            throw 'GitHub guncellemesi yerelde degistirilmis dosyalarla cakisiyor. Yerel dosyalar korundu.'
+        }
+        if ((GitText -GitArgs @('rev-parse','HEAD')) -ne $localHead) { throw 'Yerel HEAD fetch sonrasinda degisti.' }
+        if ((RemoteHead $branch) -ne $remoteBefore) { throw 'GitHub fetch sonrasi degisti; birlestirme yapilmadi.' }
+        Note ('GitHub dan degisecek dosya: ' + $incoming.Count + '; yerel degisiklikler korunuyor.')
+        $step = 'Fast-forward'
+        # Git, indeks ve izlenmeyen dosyalar acisindan ek guvenlik kontrolu de yapar.
+        # Cakisma tespit ederse --ff-only islemi hata verir; reset/stash/clean uygulanmaz.
+        RunGit -GitArgs @('merge','--ff-only','FETCH_HEAD') | Out-Host
+        Note ('BASARILI: GitHub guncellemeleri yerel ' + $branch + ' dalina alindi.')
+        Note 'NOT: Calisan BAT dosyasi guncellendiyse sonraki calistirmada yeni kod devreye girer.'
+        $exitCode = 0
+    }
+    elseif ($answer -ceq 'YAZ') {
+        $step = 'YAZ oncesi kontrol'
+        if ($blockedTracked.Count) { throw ('Takip edilen korumali dosyalar degismis: ' + ($blockedTracked -join ', ')) }
+        if ($blockedStaged.Count) { throw ('Staging alaninda korumali dosya var: ' + ($blockedStaged -join ', ')) }
+        CheckBusy
+        if ((GitText -GitArgs @('rev-parse','HEAD')) -ne $localHead) { throw 'HEAD onizlemeden sonra degisti.' }
+        if ((RemoteHead $branch) -ne $remoteBefore) { throw 'GitHub onizlemeden sonra degisti.' }
+        # Yalniz gonderilebilir dosyalari karsilastir. Gradle/Flutter tarafindan
+        # anlik olusturulan HARIC dosyalar YAZ islemini gereksiz durdurmasin.
+        # Staging alani ise tam olarak onizlemede oldugu gibi kalmalidir.
+        $stagedNow = @(RunGit -GitArgs @('diff','--cached','--name-only','--no-renames')) | Where-Object { $_ }
+        if (($stagedNow -join "`n") -cne ($staged -join "`n")) { throw 'Staging listesi onizlemeden sonra degisti.' }
+        $unstagedNow = @(RunGit -GitArgs @('diff','--name-only','--no-renames')) | Where-Object { $_ }
+        $untrackedNow = @(RunGit -GitArgs @('ls-files','--others','--exclude-standard')) | Where-Object { $_ }
+        $currentChanged = @($stagedNow + $unstagedNow + $untrackedNow | Sort-Object -Unique)
+        $currentEligible = @($currentChanged | Where-Object { -not (Forbidden $_) })
+        if (($currentEligible -join "`n") -cne ($eligible -join "`n")) {
+            throw 'Gonderilebilir dosya listesi degisti; yeniden calistirin.'
+        }
+        $currentBlockedTracked = @($stagedNow + $unstagedNow | Sort-Object -Unique | Where-Object { Forbidden $_ })
+        if ($currentBlockedTracked.Count) { throw ('Takip edilen korumali dosyalar degismis: ' + ($currentBlockedTracked -join ', ')) }
+        # Uzak HEAD yerelde yoksa gonderime izin verme: once AL ile guncelleme alinmali.
+        & git.exe cat-file -e ($remoteBefore + '^{commit}') 2>$null
+        if ($LASTEXITCODE -ne 0) { throw 'GitHub commit yerelde bilinmiyor; once guvenli AL veya ayri inceleme gerekir.' }
+        & git.exe merge-base --is-ancestor $remoteBefore HEAD
+        if ($LASTEXITCODE -ne 0) { throw 'GitHub, yerel HEAD atasi degil. Once AL/ayri inceleme gerekli.' }
+        $pending = [int](GitText -GitArgs @('rev-list','--count',($remoteBefore + '..HEAD')))
+        Note ('GitHub icin bekleyen yerel commit: ' + $pending)
+        if ($pending -gt 0) {
+            $pendingPaths = @(RunGit -GitArgs @('log','--format=','--name-only','--no-renames',($remoteBefore + '..HEAD'))) | Where-Object { $_ }
+            if (@($pendingPaths | Where-Object { Forbidden $_ }).Count) { throw 'Bekleyen commit gecmisinde korumali dosyalar var; gonderim durduruldu.' }
+            $objects = @(RunGit -GitArgs @('rev-list','--objects',($remoteBefore + '..HEAD')))
+            foreach ($entry in $objects) {
+                $oid = ($entry -split ' ',2)[0]
+                if ((GitText -GitArgs @('cat-file','-t',$oid)) -eq 'blob' -and [long](GitText -GitArgs @('cat-file','-s',$oid)) -ge 100000000L) {
+                    throw ('Gonderilecek gecmiste 100 MB veya buyuk dosya var: ' + $oid)
+                }
             }
         }
-    }
-    if ($pending -eq 0 -and $eligible.Count -eq 0) { Note 'Degisiklik yok. Gonderim gerekmiyor.'; $exitCode = 0 }
-    else {
-        $answer = (Read-Host 'ONAY: Yalniz UYGUN listelenen dosyalari commit edip GitHub a gondermek icin YAZ yazin (vazgec: Enter)').Trim()
-        if ($answer -cne 'YAZ') { Note 'IPTAL: git add/commit/push yapilmadi.'; $exitCode = 0 }
-        else {
-            $step = 'Onay sonrasi guvenlik kontrolu'
-            # Onaydan sonra uzak dal degismisse kesinlikle gonderme.
-            $remoteNow = RemoteHead $branch
-            if ($remoteNow -ne $remoteBefore) { throw 'GitHub dali onizleme sirasinda degisti; iptal edildi.' }
-            CheckBusy
-            & git.exe diff --cached --quiet
-            if ($LASTEXITCODE -ne 0) { throw 'Onizleme sonrasi staging degisti; iptal edildi.' }
-            $currentChanged = @(RunGit -GitArgs @('ls-files','--modified','--deleted','--others','--exclude-standard')) | Where-Object { $_ }
-            if ((@($currentChanged | Sort-Object) -join "`n") -cne (@($changed | Sort-Object) -join "`n")) { throw 'Dosya listesi onizlemeden sonra degisti; iptal edildi.' }
-            $currentEligible = @($currentChanged | Where-Object { -not (Forbidden $_) })
-            if ((@($currentEligible | Sort-Object) -join "`n") -cne (@($eligible | Sort-Object) -join "`n")) { throw 'Gonderim listesi degisti; iptal edildi.' }
-            $currentTracked = @(RunGit -GitArgs @('ls-files','--modified','--deleted')) | Where-Object { $_ }
-            if (@($currentTracked | Where-Object { Forbidden $_ }).Count) { throw 'Takip edilen korumali dosya degismis; iptal edildi.' }
-            $step = 'Git add/commit'
-            if ($currentEligible.Count) {
-                # Yalniz onizlemede gorulen dosyalari stage et; toplu git add -A kullanma.
-                # Dosyalardaki degisiklikler kullanicinin YAZ yetkisiyle kaydedilir.
-                foreach ($path in $currentEligible) { RunGit -GitArgs @('add','-A','--',$path) | Out-Null }
-                $stagedPaths = @(RunGit -GitArgs @('diff','--cached','--name-only'))
-                if (@($stagedPaths | Where-Object { Forbidden $_ }).Count) { throw 'Stage edilenler arasinda yasakli dosya var. GitHub a gonderilmedi; staging incelemesi gerekli.' }
+        if ($pending -eq 0 -and $eligible.Count -eq 0) {
+            Note 'Gonderilecek degisiklik yok.'
+            $exitCode = 0
+        } else {
+            # YAZ secimi onizlemede gorunen silmeleri de kapsar. Yine de ikinci onay iste.
+            $confirm = (Read-Host ('ONAY: ' + $eligible.Count + ' uygun dosya (staged dahil) ve bekleyen commitleri GitHub a gondermek icin tekrar YAZ yazin')).Trim()
+            if ($confirm -cne 'YAZ') { Note 'IPTAL: GitHub a gonderim yapilmadi.'; $exitCode = 0 }
+            else {
+                if ((RemoteHead $branch) -ne $remoteBefore) { throw 'GitHub onay sirasinda degisti.' }
+                $step = 'Git add/commit'
+                foreach ($path in $eligible) { RunGit -GitArgs @('add','-A','--',$path) | Out-Null }
+                $stagedPaths = @(RunGit -GitArgs @('diff','--cached','--name-only','--no-renames')) | Where-Object { $_ }
+                if (@($stagedPaths | Where-Object { Forbidden $_ }).Count) { throw 'Staging alanina korumali dosya girdi; push yapilmadi.' }
                 & git.exe diff --cached --quiet
                 if ($LASTEXITCODE -eq 1) {
-                    RunGit -GitArgs @('commit','-m',('Onayli yerel senkronizasyon - ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))) | Out-Host
+                    RunGit -GitArgs @('commit','-m',('Onayli cift yonlu senkronizasyon - ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))) | Out-Host
                     Note 'Yerel commit olusturuldu.'
                 } elseif ($LASTEXITCODE -ne 0) { throw 'Commit oncesi diff kontrolu basarisiz.' }
+                $step = 'Push'
+                RunGit -GitArgs @('push','origin',('HEAD:refs/heads/' + $branch)) | Out-Host
+                Note ('BASARILI: GitHub a normal push tamamlandi. Dal: ' + $branch)
+                $exitCode = 0
             }
-            $step = 'Push'
-            # Gecmiste sakli gizli anahtarlar varsa bunun denetimi icin ayrica inceleme gerekir.
-            # Otomatik gecmis yeniden yazma, force push yapilmaz.
-            RunGit -GitArgs @('push','origin',('HEAD:refs/heads/' + $branch)) | Out-Host
-            Note ('BASARILI: Normal push tamamlandi. Dal: ' + $branch)
-            $exitCode = 0
         }
+    } else {
+        Note 'IPTAL: Herhangi bir fetch/merge/add/commit/push yapilmadi.'
+        $exitCode = 0
     }
 } catch {
     Note ('DURDURULDU (' + $step + '): ' + $_.Exception.Message)
