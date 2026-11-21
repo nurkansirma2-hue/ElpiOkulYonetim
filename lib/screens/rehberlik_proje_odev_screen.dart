@@ -3839,7 +3839,10 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                             _buton(
                               'Tercihleri Kontrol Et',
                               Icons.fact_check_outlined,
-                              () => _formAc(p, islem: 2),
+                              () async {
+                                await _formAc(p, islem: 1);
+                                await _tercihleriAc();
+                              },
                               ikincil: true,
                             ),
                             _buton(
