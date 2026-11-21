@@ -36,6 +36,67 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  /// Yalnız seçili proje formunun yerel çalışma yanıtlarını ve proje
+  /// onay/dağıtım durumunu sıfırlar. Google Forms üzerinde işlem yapmaz.
+  /// Kullanıcı onayı çağıran ekrandan alınır; bütün adımlar tek transaction'dır.
+  Future<void> projeYanitlariniSifirla(
+    BireyselRehberlikBaglami b,
+    int atama,
+    int formId,
+  ) => _projeIslem(b, atama, formId, (tx, a, p) async {
+    // Ortak formun düzenlemesi yarım kalmışsa yanlış sürümü temizleme.
+    final bekleyen = await tx.query(
+      'UygulamaAyarlari',
+      where: 'Anahtar=?',
+      whereArgs: ['bilgi_toplama_duzenleme:$formId'],
+    );
+    if (bekleyen.isNotEmpty &&
+        (jsonDecode(bekleyen.single['Deger'] as String) as Map)['yerelKaydedildi'] != true) {
+      throw StateError('Bekleyen form düzenlemesi tamamlanmadan sıfırlanamaz.');
+    }
+    // Öğrenci ana bilgilerine aktarılmış bağlı değerler korunmalıdır.
+    final aktarilmis = await tx.query(
+      'OgrenciEkBilgiDeger',
+      columns: ['YanitId'],
+      where: 'FormId=?',
+      whereArgs: [formId],
+      limit: 1,
+    );
+    if (aktarilmis.isNotEmpty) {
+      throw StateError(
+        'Bu formun öğrenci bilgilerine aktarılmış kayıtları var. '
+        'Veri kaybını önlemek için sıfırlama durduruldu.',
+      );
+    }
+    await tx.delete(
+      'BilgiToplamaEsleme',
+      where: 'FormId=?',
+      whereArgs: [formId],
+    );
+    await tx.delete(
+      'BilgiToplamaYanit',
+      where: 'FormId=?',
+      whereArgs: [formId],
+    );
+    // Eski silme işaretleri kalırsa yeniden getirilen Google yanıtları
+    // yanlışlıkla atlanabilir. Yalnız bu formun işaretlerini temizle.
+    await tx.delete(
+      'UygulamaAyarlari',
+      where: 'Anahtar LIKE ?',
+      whereArgs: ['bilgi_toplama_silinen:$formId:%'],
+    );
+    p['onaylar'] = <String, dynamic>{};
+    p['dagitim'] = <String, dynamic>{};
+    p['kontenjan'] = <String, dynamic>{};
+    p.remove('dagitimImzalari');
+    p.remove('dagitimTarihi');
+    p.remove('dagitimOnayli');
+    p.remove('sonuclandi');
+    p.remove('sonucImzasi');
+    p.remove('sonucTarihi');
+    p.remove('sonucGecmisi');
+  }, yazma: true);
+
   Future<List<Map<String, Object?>>> projeDersleri(
     BireyselRehberlikBaglami b,
     int atama,
