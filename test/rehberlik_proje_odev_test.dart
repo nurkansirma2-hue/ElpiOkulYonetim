@@ -1754,6 +1754,8 @@ void main() {
     expect(find.text('Mesajı Düzenle / Gönderime Geç'), findsWidgets);
     await tester.tap(find.text('İşlem değiştir'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Yanıtlar').last);
+    await bekle();
     await tester.tap(find.text('Değerlendirme').last);
     await bekle();
     final mesaj = find.widgetWithText(FilledButton, 'Öğretmene Mesaj').first;
