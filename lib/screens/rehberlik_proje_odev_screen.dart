@@ -3704,7 +3704,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   Widget build(BuildContext context) {
     final detay = proje != null && !yeni;
     final ad = !yeni && detay && (ekran == 3 || ekran == 1 && sekme == 2)
-        ? 'Değerlendirme'
+        ? 'Dağıtım / Yazdırma'
         : yeni
         ? [
             'Form Talebi Oluştur',
@@ -3713,11 +3713,11 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
           ][adim]
         : detay
         ? [
-            'Ortak Mesajlaşma ile Gönder',
-            'Google Form Yanıtlarını Getir',
-            'Tercihleri Kontrol Et',
-            'Proje Derslerini Dağıt',
-            'Liste ve Rapor Oluştur',
+            'Form Talebi',
+            'Yanıtlar',
+            'Onay / Düzenleme',
+            'Dağıtım / Yazdırma',
+            'Liste ve Raporlar',
             'Atama Listesi',
             'Öğretmen Mesajları',
             'Bilgilendirme',
@@ -4177,6 +4177,20 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             ),
           ] else if (ekran == 3 && !salt) ...[
             ..._dagitimButonlari(),
+          ] else if (ekran == 7 && !salt) ...[
+            _buton(
+              'Öğrenci Mesajını Hazırla',
+              Icons.school_outlined,
+              _ogrenciBildirimleriHazirla,
+              etkin: kesinSonucHazir,
+            ),
+            _buton(
+              'Öğretmen Mesajlarını Gör',
+              Icons.groups_outlined,
+              () async { ekran = 6; },
+              ikincil: true,
+              etkin: kesinSonucHazir,
+            ),
           ] else if (ekran == 5 && !salt) ...[
             _buton(
               'Tüm Öğretmenlere Mesaj Hazırla',
