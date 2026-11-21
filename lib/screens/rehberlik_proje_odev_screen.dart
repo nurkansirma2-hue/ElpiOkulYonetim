@@ -720,6 +720,37 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     plan = null;
   }
 
+  Future<void> _yanitlariSifirla() async {
+    await _kontrol();
+    final id = formId;
+    final ad = (proje?['baslik'] ?? form?['Baslik'] ?? 'Seçili form').toString();
+    final onaylandi = await _onay(
+      'Proje yanıtlarını sıfırla',
+      '"$ad" formunun yalnız SQLite\'daki yanıtları, tercih onayları '
+      've ders dağıtımı/sonuçlandırma kayıtları kalıcı olarak temizlenecek. '
+      'Google Form yanıtları, öğrenci ana kayıtları ve diğer formlar korunacak. '
+      'Sonrasında Yanıtları Getir ile cevapları yeniden alabilirsiniz. '
+      'Devam etmek istiyor musunuz?',
+    );
+    if (!onaylandi) return;
+    await _kontrol();
+    if (proje == null || formId != id) {
+      throw StateError('Sıfırlama öncesi seçili form değişti.');
+    }
+    await widget.service.projeYanitlariniSifirla(b, atama, id);
+    plan = null;
+    manuelPlan = null;
+    analiz = null;
+    dogrudanYanitlar = null;
+    dogrudanUyari = null;
+    onaySecimi.clear();
+    _yanitSeciminiKapat();
+    dagitimAsamasi = 0;
+    await _yukle();
+    sonuc = 'Seçili formun yerel yanıtları ve proje onay/dağıtımı sıfırlandı. '
+        'Google Form değişmedi. Yanıtları Getir ile güncel cevapları alın.';
+  }
+
   // Tercih denetiminden önce Google'daki silmeleri yerel kayda yansıt.
   // Ağ/izin hatasında yerel verileri silme; eski durumun doğrulanamadığını bildir.
   Future<void> _tercihleriAc() async {
@@ -3369,6 +3400,14 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               ],
             ] else ...[
               _buton('Yanıtları Getir', Icons.refresh, _yanitAl),
+              if (sekme == 1)
+                _buton(
+                  'Sıfırla',
+                  Icons.restart_alt,
+                  _yanitlariSifirla,
+                  ikincil: true,
+                  renk: const Color(0xffd92737),
+                ),
               _buton(
                 'Hatırlatma Gönder',
                 Icons.notifications_outlined,
