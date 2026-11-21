@@ -32,6 +32,37 @@ class _ProjeYanitTestGoogle extends BilgiToplamaGoogleService {
   final hataliFormlar = <int>{};
   final manuelDogrulanan = <String>[];
   final manuelMevcut = <String>{};
+  bool yanitAcik = true;
+  bool yanitAyarHatali = false;
+  final yanitAlimiIslemleri = <bool>[];
+  @override
+  Future<Map<String, dynamic>> kontrolEt(
+    BireyselBilgiToplamaService yerel,
+    BilgiToplamaOturumu b,
+    int id,
+    String token,
+  ) async => {
+    'formId': 'google-proje-form',
+    'publishSettings': {
+      'publishState': {
+        'isPublished': true,
+        'isAcceptingResponses': yanitAcik,
+      },
+    },
+  };
+  @override
+  Future<void> yanitAliminiAyarla(
+    BireyselBilgiToplamaService yerel,
+    BilgiToplamaOturumu b,
+    int id,
+    String token,
+    bool acik,
+  ) async {
+    if (yanitAyarHatali) throw StateError('Google bağlantısı başarısız.');
+    yanitAcik = acik;
+    yanitAlimiIslemleri.add(acik);
+    await yerel.yayinDurumuKaydet(b, id, 'google-proje-form', acik);
+  }
   @override
   Future<void> googleSilinmesiniDogrula(
     String token,
@@ -1334,6 +1365,82 @@ void main() {
     await tester.pumpAndSettle();
     g.dispose();
   }
+
+  testWidgets(
+    'Yanıtları Kapat / Aç Google durumunu ve yerel kaydı birlikte günceller',
+    (tester) async {
+      await yanit(1, [1, 2, 3]);
+      final onceki = await fs.yanitlar(fb, fid);
+      final g = _ProjeYanitTestGoogle();
+      addTearDown(g.dispose);
+      Future<void> bekle() async {
+        for (var i = 0; i < 50; i++) {
+          await tester.runAsync(() => Future<void>.delayed(
+            const Duration(milliseconds: 25),
+          ));
+          await tester.pump();
+          if (find.byType(LinearProgressIndicator).evaluate().isEmpty) break;
+        }
+        await tester.pumpAndSettle();
+      }
+      await tester.pumpWidget(MaterialApp(
+        home: RehberlikProjeOdevScreen(
+          service: s,
+          baglam: b,
+          formService: fs,
+          google: g,
+          hesapBagla: () async => 'test',
+          atama: const {
+            'RehberlikAtamaId': 1,
+            'SinifSubeId': 1,
+            'SinifKodu': '9/C',
+            'EgitimOgretimYili': '2026/2027',
+          },
+        ),
+      ));
+      await bekle();
+      await tester.tap(find.text('Sınıfın proje dersleri'));
+      await bekle();
+      await tester.tap(find.text('Yanıtlar'));
+      await bekle();
+      expect(find.text('Yanıt alımı açık'), findsOneWidget);
+      expect(find.text('Yanıtları Kapat'), findsOneWidget);
+      await tester.tap(find.text('Yanıtları Kapat'));
+      await bekle();
+      expect(find.text('Yanıt alımını kapat'), findsOneWidget);
+      await tester.tap(find.text('İptal'));
+      await bekle();
+      expect(g.yanitAlimiIslemleri, isEmpty);
+      g.yanitAyarHatali = true;
+      await tester.tap(find.text('Yanıtları Kapat'));
+      await bekle();
+      await tester.tap(find.text('Onayla').last);
+      await bekle();
+      expect(g.yanitAcik, true);
+      expect((await fs.formGetir(fb, fid))['Durum'], 'Aktif');
+      g.yanitAyarHatali = false;
+      await tester.tap(find.text('Yanıtları Kapat'));
+      await bekle();
+      await tester.tap(find.text('Onayla').last);
+      await bekle();
+      expect(g.yanitAcik, false);
+      expect(g.yanitAlimiIslemleri, [false]);
+      expect((await fs.formGetir(fb, fid))['Durum'], 'Kapali');
+      expect(find.text('Yanıt alımı kapalı'), findsOneWidget);
+      expect(find.text('Yanıtları Aç'), findsOneWidget);
+      expect(await fs.yanitlar(fb, fid), onceki);
+      await tester.tap(find.text('Yanıtları Aç'));
+      await bekle();
+      await tester.tap(find.text('Onayla').last);
+      await bekle();
+      expect(g.yanitAcik, true);
+      expect(g.yanitAlimiIslemleri, [false, true]);
+      expect((await fs.formGetir(fb, fid))['Durum'], 'Aktif');
+      expect(await fs.yanitlar(fb, fid), onceki);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    },
+  );
 
   Future<void> silmeBaglantisiHazirDegilkenYenilemeyiDogrula(WidgetTester tester) async {
     final g = _IlkSecimGoogle()..okumaHatasi = true;
