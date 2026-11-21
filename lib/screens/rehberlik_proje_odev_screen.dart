@@ -3489,6 +3489,161 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             renk: const Color(0xff008a24),
           ),
         ];
+  // Onaylı dağıtım listesi ve öğrenci imzalı PDF aynı işlem ekranında.
+  Widget _dagitimYazdirma() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _dagitim(),
+      if (dagitimGuncel) ...[
+        const SizedBox(height: 12),
+        _kart('Tercih – Atama – Öğrenci İmzası', Icons.print_outlined, [
+          const Text(
+            'Öğrenci numarası, ad soyad, üç tercihi, atanan ders ve '
+            'elle imzalanacak boş imza alanı.',
+          ),
+          _buton(
+            'İmza Çizelgesini Ön İzle',
+            Icons.preview_outlined,
+            () => _raporGoster(1),
+            ikincil: true,
+          ),
+          _buton(
+            'İmza Çizelgesini PDF / Yazdır',
+            Icons.picture_as_pdf_outlined,
+            _imzaCizelgesiniYazdir,
+          ),
+        ]),
+        _kart('Ders Bazlı Öğrenci Listesi', Icons.groups_outlined, [
+          _buton(
+            'Atama Listesini Aç',
+            Icons.list_alt,
+            () async { ekran = 5; },
+            ikincil: true,
+          ),
+        ]),
+        if (!kesinSonucHazir)
+          _kart('Proje Seçimini Sonuçlandır',
+              Icons.check_circle_outline, [
+            const Text(
+              'Onaylı dağıtımı yazdırabilirsiniz. Öğrenci ve öğretmen '
+              'bildirimleri için ayrıca proje seçimini sonuçlandırın.',
+            ),
+            _buton(
+              'Proje Seçimini Sonuçlandır',
+              Icons.verified_outlined,
+              _sonuclandir,
+              etkin: !salt && analiz?['sonuclanabilir'] == true,
+            ),
+          ]),
+      ],
+    ],
+  );
+
+  Future<void> _imzaCizelgesiniYazdir() async {
+    if (!dagitimGuncel) {
+      throw StateError('Önce güncel ders dağıtımını onaylayın.');
+    }
+    final onceki = raporTuru;
+    raporTuru = 1;
+    try {
+      await _export('pdf');
+    } finally {
+      raporTuru = onceki;
+    }
+  }
+
+  Future<void> _ogrenciBildirimleriHazirla() async {
+    await _kontrol();
+    if (!kesinSonucHazir) {
+      throw StateError('Öğrenci bildirimi için proje seçimini sonuçlandırın.');
+    }
+    final id = formId;
+    final imza = analiz!['imza'] as String;
+    final ogrenciSatirlari = (analiz!['ogrenciler'] as List)
+        .cast<Map<String, dynamic>>()
+        .where((r) => r['dersId'] != null)
+        .toList();
+    final ogrenciIds = ogrenciSatirlari
+        .map((r) => r['OgrenciId'] as int)
+        .toSet();
+    if (ogrenciIds.isEmpty) {
+      throw StateError('Bildirilecek öğrenci bulunmuyor.');
+    }
+    final mesajlar = <int, String>{
+      for (final r in ogrenciSatirlari)
+        r['OgrenciId'] as int:
+            'Sayın öğrenci/veli,\n'
+            '${widget.atama['SinifKodu']} sınıfında ${r['Ad']} '
+            '${r['Soyad']} (${r['OkulNo']}) için proje ödevi '
+            'dersi: ${r['dersAdi']}.\nBilginize.',
+    };
+    if (!mounted) return;
+    await Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      pageBuilder: (_, _, _) => MesajlasmaScreen(
+        kaynakModul: 'RehberlikProjeOgrenciSonuc',
+        kaynakKayit: '$atama:$id:$imza',
+        baslangicOgrenciIdleri: ogrenciIds,
+        izinliOgrenciIdleri: ogrenciIds,
+        ogrenciMesajlari: mesajlar,
+        gonderimOnizlemesiniAc: true,
+        takipPenceresi: true,
+        kaynakKontrol: (mb) async {
+          await _kontrol();
+          if (mb.okulId != b.okulId ||
+              mb.ogretmenId != b.ogretmenProfilId ||
+              mb.yil != b.egitimOgretimYili ||
+              proje == null || formId != id) {
+            throw StateError('Mesaj okul, yıl veya proje kapsamı değişti.');
+          }
+          final yeniAnaliz =
+              await widget.service.projeAnalizi(b, atama, id);
+          if (yeniAnaliz['sonuclandi'] != true ||
+              yeniAnaliz['imza'] != imza) {
+            throw StateError(
+              'Proje sonucu değişti. Mesajları yeniden hazırlayın.',
+            );
+          }
+        },
+      ),
+    ));
+    if (mounted) await _yukle();
+  }
+
+  Widget _bilgilendirme() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _bilgi(
+        kesinSonucHazir
+            ? 'Proje seçimi sonuçlandırıldı. Öğrenci ve ders öğretmenine '
+              'ayrı mesaj taslakları hazırlanabilir.'
+            : 'Bildirimler için dağıtımı onaylayıp proje seçimini '
+              'sonuçlandırın.',
+        uyari: !kesinSonucHazir,
+      ),
+      _kart('Öğrenci Bildirimi', Icons.school_outlined, [
+        const Text('Her öğrenciye yalnız kendi atandığı ders bildirilecek. '
+            'Alıcı ve mesajlar ortak Mesajlaşma ekranında kontrol edilir.'),
+        _buton(
+          'Öğrenci Mesajını Hazırla',
+          Icons.message_outlined,
+          _ogrenciBildirimleriHazirla,
+          etkin: kesinSonucHazir && !salt,
+        ),
+      ]),
+      _kart('Ders Öğretmeni Bildirimi', Icons.groups_outlined, [
+        const Text(
+          'Birden fazla ders aynı öğretmene aitse öğrenci listeleri '
+          'tek mesaj taslağında birleştirilir.',
+        ),
+        if (atamaListesiHazir)
+          _ogretmenMesajlari()
+        else
+          const Text('Henüz onaylı dağıtım yok.'),
+      ]),
+    ],
+  );
+
   Widget _raporlar() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
