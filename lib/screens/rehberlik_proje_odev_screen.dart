@@ -1679,6 +1679,200 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     await _yukle();
   }
 
+  bool get atamaListesiHazir =>
+      dagitimGuncel && analiz?['sonuclandi'] == true;
+
+  List<Map<String, dynamic>> get _atananDersler =>
+      ((analiz?['dersler'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>()
+          .where((d) => (d['yerlesen'] as int? ?? 0) > 0)
+          .toList();
+
+  List<Map<String, dynamic>> get _ogretmenMesajGruplari {
+    final gruplar = <String, Map<String, dynamic>>{};
+    for (final ders in _atananDersler) {
+      for (final k in (ders['ogretmenler'] as List).cast<Map<String, Object?>>()) {
+        final kisiId = k['KisiId'] as String;
+        final grup = gruplar.putIfAbsent(kisiId, () => {
+          'kisiId': kisiId,
+          'ad': k['AdSoyad'],
+          'dersler': <Map<String, dynamic>>[],
+          'ogrenciIds': <int>{},
+        });
+        (grup['dersler'] as List<Map<String, dynamic>>).add(ders);
+        final hedefler = (analiz!['ogrenciler'] as List).cast<Map<String, dynamic>>();
+        (grup['ogrenciIds'] as Set<int>).addAll(hedefler
+            .where((r) => r['dersId'] == ders['dersId'])
+            .map((r) => r['OgrenciId'] as int));
+      }
+    }
+    return gruplar.values.toList()
+      ..sort((a, b) => (a['ad'] as String).compareTo(b['ad'] as String));
+  }
+
+  Future<void> _ogretmenGrupMesaji(String kisiId) async {
+    await _kontrol();
+    if (!atamaListesiHazir) {
+      throw StateError('Önce kesin ders dağıtımını sonuçlandırın.');
+    }
+    final id = formId;
+    final grup = _ogretmenMesajGruplari.singleWhere(
+      (g) => g['kisiId'] == kisiId,
+    );
+    final dersIds = (grup['dersler'] as List<Map<String, dynamic>>)
+        .map((d) => d['dersId'] as int).toList()..sort();
+    // Her dersin alıcı ve sonuç imzası ayrı ayrı doğrulanır.
+    Future<List<Map<String, dynamic>>> paketler() async {
+      final sonuc = <Map<String, dynamic>>[];
+      for (final dersId in dersIds) {
+        final paket = await widget.service.projeSonucMesaji(
+          b, atama, id, dersId,
+        );
+        if (!(paket['aliciIds'] as List).contains(kisiId)) {
+          throw StateError('Öğretmen bu dersin doğrulanmış alıcısı değil.');
+        }
+        sonuc.add(paket);
+      }
+      return sonuc;
+    }
+    final ilk = await paketler();
+    // Mesaj uzunluğu sınırı ortak mesajlaşma tarafından da denetlenir.
+    final metin = ilk.map((p) => p['metin'] as String).join('\n\n---\n\n');
+    if (metin.length > 4000) {
+      throw StateError('Birleşik öğretmen mesajı çok uzun. Ders bazında gönderin.');
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      pageBuilder: (_, _, _) => MesajlasmaScreen(
+        kaynakModul: 'RehberlikProjeSonuc',
+        kaynakKayit: '$atama:$id:ogretmen:$kisiId',
+        ogretmenSinifId: sinif,
+        baslangicOgretmenIdleri: {kisiId},
+        baslangicKisiBaglari: {'Ogretmen:$kisiId:$sinif'},
+        baslangicMetni: metin,
+        yalnizGonderimOnayi: true,
+        gonderimOnizlemesiniAc: true,
+        takipPenceresi: true,
+        kaynakKontrol: (mb) async {
+          await _kontrol();
+          if (mb.okulId != b.okulId ||
+              mb.ogretmenId != b.ogretmenProfilId ||
+              mb.yil != b.egitimOgretimYili ||
+              proje == null || formId != id) {
+            throw StateError('Proje veya mesaj kapsamı değişti.');
+          }
+          final guncel = await paketler();
+          for (var i = 0; i < ilk.length; i++) {
+            if (guncel[i]['imza'] != ilk[i]['imza']) {
+              throw StateError('Atama veya ders öğretmeni değişti. Mesajı yeniden hazırlayın.');
+            }
+          }
+        },
+      ),
+    ));
+    if (mounted) await _yukle();
+  }
+
+  Widget _atamaListesi() {
+    if (!atamaListesiHazir) {
+      return _bilgi(
+        'Atama listesi yalnız güncel dağıtım onaylanıp proje seçimi '
+        'sonuçlandırıldıktan sonra açılır.',
+        uyari: true,
+      );
+    }
+    final rows = (analiz!['ogrenciler'] as List).cast<Map<String, dynamic>>();
+    final atanan = rows.where((r) => r['dersId'] != null).length;
+    final dersler = _atananDersler;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _bilgi('Ders atamaları kesinleştirildi • $atanan öğrenci yerleştirildi.'),
+      _istatistik([
+        ('Toplam', analiz!['toplam'] as int, Colors.blue),
+        ('Atanan', atanan, Colors.green),
+        ('Açıkta', (analiz!['toplam'] as int) - atanan, Colors.red),
+        ('Ders', dersler.length, Colors.orange),
+      ]),
+      const SizedBox(height: 8),
+      for (final ders in dersler)
+        _kart('${ders['dersAdi']}', Icons.menu_book_outlined, [
+          Text(
+            (ders['ogretmenler'] as List).isEmpty
+                ? 'Öğretmen eşleştirilmemiş'
+                : 'Öğretmen: ${(ders['ogretmenler'] as List).map((k) => k['AdSoyad']).join(', ')}',
+          ),
+          const SizedBox(height: 8),
+          for (final r in rows.where((r) => r['dersId'] == ders['dersId']))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Text('${r['OkulNo']} • ${r['Ad']} ${r['Soyad']}'),
+            ),
+          if (!salt)
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              _buton(
+                'Öğretmene Mesaj Hazırla',
+                Icons.send_outlined,
+                () => _ogretmeneSonucMesaji(ders['dersId'] as int),
+                ikincil: true,
+                etkin: (ders['ogretmenler'] as List).isNotEmpty,
+              ),
+              _buton(
+                'Öğretmen Eşleştir',
+                Icons.person_search_outlined,
+                () => _dersOgretmeniSec(ders['dersId'] as int),
+                ikincil: true,
+              ),
+            ]),
+        ]),
+    ]);
+  }
+
+  Widget _ogretmenMesajlari() {
+    if (!atamaListesiHazir) {
+      return _bilgi('Önce kesin dağıtımı sonuçlandırın.', uyari: true);
+    }
+    final gruplar = _ogretmenMesajGruplari;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _bilgi(
+        'Atama listesine göre öğretmen bazlı mesaj taslakları hazırlanabilir. '
+        'Aynı öğretmenin farklı dersleri tek mesajda birleştirilir. '
+        'Gönderim yalnız Mesajlaşma ekranındaki onayla yapılır.',
+      ),
+      _istatistik([
+        ('Öğretmen', gruplar.length, Colors.green),
+        ('Öğrenci', analiz!['yerlesen'] as int, Colors.blue),
+        ('Ders', _atananDersler.length, Colors.orange),
+      ]),
+      const SizedBox(height: 8),
+      for (final grup in gruplar)
+        _kart('${grup['ad']}', Icons.person_outline, [
+          Text(
+            '${(grup['dersler'] as List).length} ders • '
+            '${(grup['ogrenciIds'] as Set).length} öğrenci',
+          ),
+          for (final ders in (grup['dersler'] as List<Map<String, dynamic>>)) ...[
+            const SizedBox(height: 8),
+            Text('${ders['dersAdi']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              (analiz!['ogrenciler'] as List)
+                  .cast<Map<String, dynamic>>()
+                  .where((r) => r['dersId'] == ders['dersId'])
+                  .map((r) => '${r['OkulNo']} ${r['Ad']} ${r['Soyad']}')
+                  .join(', '),
+            ),
+          ],
+          if (!salt)
+            _buton(
+              'Mesajı Düzenle / Gönderime Geç',
+              Icons.send_outlined,
+              () => _ogretmenGrupMesaji(grup['kisiId'] as String),
+            ),
+        ]),
+      if (gruplar.isEmpty)
+        _bilgi('Mesaj için ders öğretmenlerini eşleştirin.', uyari: true),
+    ]);
+  }
+
   Future<void> _ogretmeneSonucMesaji(int dersId) async {
     await _kontrol();
     final paket = await widget.service.projeSonucMesaji(
