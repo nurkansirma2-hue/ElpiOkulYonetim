@@ -89,6 +89,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   Map<String, dynamic>? proje, plan;
   Map<String, dynamic>? analiz;
   Map<String, Object?>? form;
+  bool? googleYanitAcik;
   String? hata, sonuc, link;
   bool busy = true, yeni = false, kontenjan = true, sadeceHata = false;
   int adim = 0, ekran = 0, sekme = 0;
@@ -483,6 +484,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     _yanitSeciminiKapat();
     onaySecimi.clear();
     sekme = 0;
+    googleYanitAcik = null;
     proje = p;
     ekran = islem;
     plan = null;
@@ -681,6 +683,66 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       ),
     );
     sonuc = 'Gönderim durumu ortak Mesajlaşma kayıtlarında tutulur.';
+  }
+
+  Future<void> _yanitAlimiDurumunuKontrolEt() async {
+    await _kontrol(yazma: false);
+    final id = formId;
+    final f = await fs.formGetir(fb!, id);
+    final gid = f['GoogleFormId'] as String?;
+    if (gid == null || gid.isEmpty) {
+      googleYanitAcik = null;
+      return;
+    }
+    final uzak = await google.kontrolEt(fs, fb!, id, await _token());
+    if (proje == null || formId != id) return;
+    final yayin = (uzak['publishSettings'] as Map?)?['publishState'] as Map?;
+    if (yayin == null || yayin['isAcceptingResponses'] is! bool) {
+      throw StateError('Google Form yanıt kabul durumu doğrulanamadı.');
+    }
+    googleYanitAcik =
+        yayin['isPublished'] == true &&
+        yayin['isAcceptingResponses'] == true;
+  }
+
+  Future<void> _yanitAliminiDegistir() async {
+    await _kontrol();
+    final id = formId;
+    // İşlem öncesinde Google tarafındaki gerçek durumu yeniden kontrol et.
+    await _yanitAlimiDurumunuKontrolEt();
+    if (proje == null || formId != id || googleYanitAcik == null) {
+      throw StateError('Seçili formun yanıt alım durumu doğrulanamadı.');
+    }
+    final ac = googleYanitAcik == false;
+    final ad = (proje!['baslik'] ?? 'Seçili form').toString();
+    final sayi = hamYanitlar.length;
+    if (!await _onay(
+      ac ? 'Yanıtları aç' : 'Yanıt alımını kapat',
+      ac
+          ? '"$ad" Google Formu yeniden yanıt kabul etmeye başlayacak. '
+              'Mevcut $sayi yerel yanıt korunacak. Devam edilsin mi?'
+          : '"$ad" Google Formu yeni yanıt kabul etmeyecek. '
+              'Mevcut $sayi yerel yanıt ve Google Form yanıtları korunacak. '
+              'Yanıtları Getir ile eski cevaplara erişmeye devam edebilirsiniz. '
+              'Devam edilsin mi?',
+    )) {
+      return;
+    }
+    await _kontrol();
+    if (proje == null || formId != id) {
+      throw StateError('İşlem sırasında seçili proje formu değişti.');
+    }
+    await google.yanitAliminiAyarla(fs, fb!, id, await _token(), ac);
+    // Başarıyı yalnız uzak Google Form'un teyit ettiği duruma göre göster.
+    googleYanitAcik = null;
+    await _yanitAlimiDurumunuKontrolEt();
+    if (googleYanitAcik != ac) {
+      throw StateError('Google Form yanıt durumu beklenen şekilde değişmedi.');
+    }
+    await _yukle();
+    sonuc = ac
+        ? 'Google Form yeniden yanıt kabul ediyor.'
+        : 'Google Form yeni yanıtlara kapatıldı. Mevcut cevaplar korunuyor.';
   }
 
   Future<void> _yanitAl() async {
@@ -2382,11 +2444,43 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   }
                   sekme = s.single;
                   _yanitSeciminiKapat();
-                  if (sekme == 1 && dogrudanIsteniyor) await _dogrudanYukle();
+                  if (sekme == 1) {
+                    await _yanitAlimiDurumunuKontrolEt();
+                    if (dogrudanIsteniyor) await _dogrudanYukle();
+                  }
                 }),
         ),
         const SizedBox(height: 12),
         if (dogrudanUyari != null) _bilgi(dogrudanUyari!),
+        if (sekme == 1 && form?['GoogleFormId'] != null)
+          Card(
+            color: (googleYanitAcik ?? form?['Durum'] == 'Aktif')
+                ? const Color(0xffe7f6e9)
+                : const Color(0xffffecec),
+            child: ListTile(
+              leading: Icon(
+                (googleYanitAcik ?? form?['Durum'] == 'Aktif')
+                    ? Icons.check_circle_outline
+                    : Icons.lock_outline,
+                color: (googleYanitAcik ?? form?['Durum'] == 'Aktif')
+                    ? const Color(0xff008a24)
+                    : const Color(0xffbd3030),
+              ),
+              title: Text(
+                (googleYanitAcik ?? form?['Durum'] == 'Aktif')
+                    ? 'Yanıt alımı açık'
+                    : 'Yanıt alımı kapalı',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                googleYanitAcik == null
+                    ? 'Yerel kaydedilmiş durum • Google durumunu kontrol etmek için Yanıtlar sekmesini açın.'
+                    : googleYanitAcik!
+                        ? 'Google Form yeni yanıtları kabul ediyor.'
+                        : 'Google Form yeni yanıt kabul etmiyor. Mevcut cevaplar korunuyor.',
+              ),
+            ),
+          ),
         if (sekme == 0) ...[
           _kart('Form Yanıt Durumu', Icons.bar_chart, [
             _istatistik([
@@ -3505,6 +3599,20 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               ],
             ] else ...[
               _buton('Yanıtları Getir', Icons.refresh, _yanitAl),
+              if (sekme == 1 && form?['GoogleFormId'] != null)
+                _buton(
+                  (googleYanitAcik ?? form?['Durum'] == 'Aktif')
+                      ? 'Yanıtları Kapat'
+                      : 'Yanıtları Aç',
+                  (googleYanitAcik ?? form?['Durum'] == 'Aktif')
+                      ? Icons.lock_outline
+                      : Icons.lock_open_outlined,
+                  _yanitAliminiDegistir,
+                  ikincil: true,
+                  renk: (googleYanitAcik ?? form?['Durum'] == 'Aktif')
+                      ? const Color(0xffb46b00)
+                      : const Color(0xff008a24),
+                ),
               if (sekme == 1)
                 _buton(
                   'Sıfırla',
