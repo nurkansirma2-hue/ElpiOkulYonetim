@@ -64,6 +64,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   final arama = TextEditingController();
   final dagitimArama = TextEditingController();
   final formArama = TextEditingController();
+  final formDurumlari = <int, Map<String, dynamic>>{};
+  int formFiltre = 0;
   int dagitimAsamasi = 0;
   int kapasiteSurumu = 0;
   bool kriterDegisti = false;
@@ -187,6 +189,16 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   Future<void> _yukle() async {
     await _kontrol(yazma: false);
     talepler = await widget.service.projeTalepleri(b, atama);
+    formDurumlari.clear();
+    for (final p in talepler) {
+      final id = p['formId'] as int;
+      final f = await fs.formGetir(fb!, id);
+      final yonetim = await fs.yonetim(fb!, id);
+      formDurumlari[id] = {
+        'durum': f['Durum'],
+        'arsiv': yonetim['arsiv'] == true,
+      };
+    }
     formSecimi.removeWhere((id) => !talepler.any((p) => p['formId'] == id));
     dersler = await widget.service.projeDersleri(b, atama);
     ogrenciler = await widget.service.sinifOgrencileri(b, atama);
@@ -3675,6 +3687,25 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                     ),
                   ],
                 ),
+              SegmentedButton<int>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(
+                    value: 0,
+                    icon: Icon(Icons.assignment_outlined),
+                    label: Text('Aktif Formlar'),
+                  ),
+                  ButtonSegment(
+                    value: 1,
+                    icon: Icon(Icons.archive_outlined),
+                    label: Text('Arşiv'),
+                  ),
+                ],
+                selected: {formFiltre},
+                onSelectionChanged: (secim) =>
+                    setState(() => formFiltre = secim.first),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: formArama,
                 onChanged: (_) => setState(() {}),
@@ -3684,8 +3715,10 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              for (final p in talepler.where(
-                (p) => '${p['baslik']} ${(p['dersler'] as Map).values.join(' ')}'
+              for (final p in talepler.where((p) =>
+                (formDurumlari[p['formId']]?['arsiv'] == true) ==
+                    (formFiltre == 1) &&
+                '${p['baslik']} ${(p['dersler'] as Map).values.join(' ')}'
                     .toLowerCase().contains(formArama.text.trim().toLowerCase()),
               ))
                 Card(
@@ -3743,6 +3776,21 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                                 padding: EdgeInsets.only(left: 6),
                                 child: Chip(label: Text('Sonuçlandırıldı')),
                               ),
+                            if (formDurumlari[p['formId']]?['durum'] == 'Kapali')
+                              const Padding(
+                                padding: EdgeInsets.only(left: 6),
+                                child: Chip(label: Text('Yanıtlar kapalı')),
+                              ),
+                            if (formDurumlari[p['formId']]?['durum'] == 'Aktif')
+                              const Padding(
+                                padding: EdgeInsets.only(left: 6),
+                                child: Chip(label: Text('Yanıtlar açık')),
+                              ),
+                            if (formDurumlari[p['formId']]?['arsiv'] == true)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 6),
+                                child: Chip(label: Text('Arşiv')),
+                              ),
                           ]),
                         ),
                         Padding(
@@ -3775,7 +3823,13 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   ),
                 ),
               if (talepler.isEmpty)
-                _bilgi('Henüz proje formu yok. Yeni form talebi oluşturun.'),
+                _bilgi('Henüz proje formu yok. Yeni form talebi oluşturun.')
+              else if (!talepler.any((p) =>
+                  (formDurumlari[p['formId']]?['arsiv'] == true) ==
+                      (formFiltre == 1) &&
+                  '${p['baslik']} ${(p['dersler'] as Map).values.join(' ')}'
+                      .toLowerCase().contains(formArama.text.trim().toLowerCase())))
+                _bilgi('Bu filtreye uygun proje formu bulunamadı.'),
             ],
           ],
         ),
