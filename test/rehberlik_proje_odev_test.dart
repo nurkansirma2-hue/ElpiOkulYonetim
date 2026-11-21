@@ -408,6 +408,9 @@ void main() {
       await yanit(1, [1, 2, 3]);
       final r = (await fs.yanitlar(fb, fid)).single;
       final soru = (await fs.sorular(fb, fid)).first;
+      // Bağlı öğrenci kimliği ve form ilişkisi gerçek FK şartını sağlamalı.
+      await db.update('BilgiToplamaYanit', {'OgrenciId': 1},
+          where: 'Id=?', whereArgs: [r['Id']]);
       // Aktarılmış kayıt, ham yanıtın silinmesine engel olmalıdır.
       await db.insert('OgrenciEkBilgiDeger', {
         'YanitId': r['Id'],
