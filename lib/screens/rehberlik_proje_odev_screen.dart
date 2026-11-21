@@ -3760,7 +3760,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                       if (!formSecimModu) ...[
                         Padding(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                          child: Row(children: [
+                          child: Wrap(spacing: 6, runSpacing: 4, children: [
                             if (p['dagitimOnayli'] == true)
                               const Chip(
                                 avatar: Icon(Icons.check_circle_outline, size: 16),
