@@ -541,9 +541,7 @@ void main() {
       await bekle();
       await tester.tap(find.text('Sınıfın proje dersleri'));
       await bekle();
-      await tester.tap(find.text('İşlem değiştir'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Dağıtım / Yazdırma').last);
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
       await bekle();
       final atamaListesi = find.text('Atama Listesini Aç');
       await tester.ensureVisible(atamaListesi);
@@ -610,13 +608,12 @@ void main() {
       await bekle();
       await tester.tap(find.text('Sınıfın proje dersleri'));
       await bekle();
-      await tester.tap(find.text('İşlem değiştir'));
-      await tester.pumpAndSettle();
-      expect(find.text('Form Talebi'), findsWidgets);
-      expect(find.text('Onay / Düzenleme'), findsOneWidget);
-      expect(find.text('Dağıtım / Yazdırma'), findsOneWidget);
-      expect(find.text('Bilgilendirme'), findsOneWidget);
-      await tester.tap(find.text('Bilgilendirme').last);
+      expect(find.byKey(const ValueKey('proje-ust-sekme-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('proje-ust-sekme-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('proje-ust-sekme-2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('proje-ust-sekme-3')), findsOneWidget);
+      expect(find.byTooltip('İşlem değiştir'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
       await bekle();
       expect(find.text('Öğrenci Bildirimi'), findsOneWidget);
       expect(find.text('Ders Öğretmeni Bildirimi'), findsOneWidget);
@@ -713,9 +710,7 @@ void main() {
       await bekle();
       await tester.tap(find.text('Sınıfın proje dersleri'));
       await bekle();
-      await tester.tap(find.text('İşlem değiştir'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Dağıtım / Yazdırma').last);
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
       await bekle();
       final atamaListesi = find.text('Atama Listesini Aç');
       await tester.ensureVisible(atamaListesi);
@@ -1980,9 +1975,7 @@ void main() {
     expect(find.text('Sonuçlandırıldı'), findsOneWidget);
     await capture('400-5-degerlendirme-sonuc');
     // Kesin dağıtımın yeni Atama Listesi'nde görünmesi.
-    await tester.tap(find.text('İşlem değiştir'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Dağıtım / Yazdırma').last);
+    await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
     await bekle();
     final atamaListesi = find.text('Atama Listesini Aç');
     await tester.ensureVisible(atamaListesi);
@@ -1997,11 +1990,7 @@ void main() {
     await bekle();
     expect(find.text('Öğretmen'), findsWidgets);
     expect(find.text('Mesajı Düzenle / Gönderime Geç'), findsWidgets);
-    await tester.tap(find.text('İşlem değiştir'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Yanıtlar').last);
-    await bekle();
-    await tester.tap(find.text('Değerlendirme').last);
+    await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
     await bekle();
     final mesaj = find.widgetWithText(FilledButton, 'Öğretmene Mesaj').first;
     await tester.ensureVisible(mesaj);
