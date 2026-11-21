@@ -980,6 +980,46 @@ void main() {
     },
   );
   test(
+    'pasif öğrenci yalnız seçili projeden çıkarılır; Google yanıtı ve diğer kayıtlar korunur',
+    () async {
+      await tamDagitim();
+      final oncekiYanitlar = await db.query('BilgiToplamaYanit',
+          where: 'FormId=?', whereArgs: [fid]);
+      final ogrenciler = await db.query('Ogrenci');
+      final kayitlar = await db.query('OgrenciSinifKayit');
+      final ikinci = await projeFormu(dersler);
+      await expectLater(
+        s.projePasifOgrenciyiCikar(b, 1, fid, 2),
+        throwsStateError,
+      );
+      await db.update('OgrenciSinifKayit', {'Aktif': 0},
+          where: 'OgrenciId=1 AND SinifSubeId=1');
+      await s.projePasifOgrenciyiCikar(b, 1, fid, 1);
+      final proje = (await s.projeTalepleri(b, 1))
+          .singleWhere((p) => p['formId'] == fid);
+      expect(proje['ogrenciler'], [2, 3]);
+      expect((proje['onaylar'] as Map).containsKey('1'), isFalse);
+      expect((proje['dagitim'] as Map).containsKey('1'), isFalse);
+      expect(proje['dagitimOnayli'], false);
+      expect(proje['sonuclandi'], false);
+      final rows = await s.projeTercihleri(b, 1, fid);
+      expect(rows, hasLength(2));
+      expect(rows.map((r) => r['OgrenciId']).toSet(), {2, 3});
+      expect((await s.projeAnalizi(b, 1, fid))['toplam'], 2);
+      expect((await s.projeTalepleri(b, 1))
+          .singleWhere((p) => p['formId'] == ikinci)['ogrenciler'], [1, 2, 3]);
+      expect(await db.query('BilgiToplamaYanit',
+          where: 'FormId=?', whereArgs: [fid]), oncekiYanitlar);
+      expect(await db.query('Ogrenci'), ogrenciler);
+      final yeniKayitlar = await db.query('OgrenciSinifKayit');
+      expect(yeniKayitlar.length, kayitlar.length);
+      await expectLater(
+        s.projePasifOgrenciyiCikar(b, 1, fid, 1),
+        throwsStateError,
+      );
+    },
+  );
+  test(
     'tam SQLite yedeği formu, tercih onaylarını ve kesin dağıtımı geri yükler',
     () async {
       final temp = await Directory.systemTemp.createTemp('proje_yedek_test_');
