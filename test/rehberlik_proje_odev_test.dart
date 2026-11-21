@@ -543,7 +543,11 @@ void main() {
       await bekle();
       await tester.tap(find.text('İşlem değiştir'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Atama Listesi').last);
+      await tester.tap(find.text('Dağıtım / Yazdırma').last);
+      await bekle();
+      final atamaListesi = find.text('Atama Listesini Aç');
+      await tester.ensureVisible(atamaListesi);
+      await tester.tap(atamaListesi);
       await bekle();
       expect(find.textContaining('Ders dağıtımı onaylandı • 3 öğrenci'), findsOneWidget);
       expect(find.textContaining('101 • Öğrenci1'), findsWidgets);
@@ -646,7 +650,11 @@ void main() {
       await bekle();
       await tester.tap(find.text('İşlem değiştir'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Atama Listesi').last);
+      await tester.tap(find.text('Dağıtım / Yazdırma').last);
+      await bekle();
+      final atamaListesi = find.text('Atama Listesini Aç');
+      await tester.ensureVisible(atamaListesi);
+      await tester.tap(atamaListesi);
       await bekle();
       final ac = find.text('Tüm Öğretmenlere Mesaj Hazırla');
       await tester.ensureVisible(ac);
@@ -1816,7 +1824,7 @@ void main() {
     await bekle();
     await tester.tap(find.text('Sınıfın proje dersleri'));
     await bekle();
-    await tester.tap(find.text('Değerlendirme'));
+    await tester.tap(find.text('Dağıtım / Yazdırma'));
     await bekle();
     expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
     await capture('400-5-degerlendirme-hazir');
@@ -1909,9 +1917,13 @@ void main() {
     // Kesin dağıtımın yeni Atama Listesi'nde görünmesi.
     await tester.tap(find.text('İşlem değiştir'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Atama Listesi').last);
+    await tester.tap(find.text('Dağıtım / Yazdırma').last);
     await bekle();
-    expect(find.text('Ders atamaları kesinleştirildi • 3 öğrenci yerleştirildi.'),
+    final atamaListesi = find.text('Atama Listesini Aç');
+    await tester.ensureVisible(atamaListesi);
+    await tester.tap(atamaListesi);
+    await bekle();
+    expect(find.text('Proje seçimi sonuçlandırıldı • 3 öğrenci yerleştirildi.'),
         findsOneWidget);
     expect(find.textContaining('101 • Öğrenci1'), findsWidgets);
     final tumMesajlar = find.text('Tüm Öğretmenlere Mesaj Hazırla');
@@ -1924,7 +1936,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Yanıtlar').last);
     await bekle();
-    await tester.tap(find.text('Değerlendirme').last);
+    await tester.tap(find.text('Dağıtım / Yazdırma').last);
     await bekle();
     final mesaj = find.widgetWithText(FilledButton, 'Öğretmene Mesaj').first;
     await tester.ensureVisible(mesaj);
@@ -2045,7 +2057,7 @@ void main() {
       expect(find.byKey(const ValueKey('proje-ana-dagitim')), findsNothing);
       await tester.tap(find.text('Proje'));
       await bekle();
-      await tester.tap(find.text('Değerlendirme'));
+      await tester.tap(find.text('Dağıtım / Yazdırma'));
       await bekle();
       expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
       await tester.tap(find.byTooltip('Proje taleplerine dön'));
@@ -2235,7 +2247,7 @@ void main() {
       await bekle();
       await tester.tap(find.text('Özet'));
       await bekle();
-      await tester.tap(find.text('Değerlendirme'));
+      await tester.tap(find.text('Dağıtım / Yazdırma'));
       await bekle();
       expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
       await capture('${width.toInt()}-5-degerlendirme');
@@ -2250,10 +2262,10 @@ void main() {
       await tester.tap(find.text('Özet'));
       await bekle();
       for (final (i, ad) in [
-        (0, 'Form Daveti'),
-        (2, 'Tercih Kontrolü'),
-        (3, 'Ders Dağıtımı'),
-        (4, 'Liste ve Raporlar'),
+        (0, 'Form Talebi'),
+        (2, 'Onay / Düzenleme'),
+        (3, 'Dağıtım / Yazdırma'),
+        (7, 'Bilgilendirme'),
       ]) {
         await tester.tap(find.byTooltip('İşlem değiştir'));
         await tester.pumpAndSettle();
@@ -2269,15 +2281,9 @@ void main() {
           expect(find.textContaining('Onayla ('), findsWidgets);
         }
         await capture('${width.toInt()}-${i + 4}-$ad');
-        if (i == 4) {
-          await tester.tap(find.text('Belgelerim’e Kaydet'));
-          await bekle();
-          expect(tester.takeException(), isNull);
-          expect(await db.query('BireyselBelge'), isNotEmpty);
-          expect(
-            (await db.query('BireyselBelge')).first['EgitimOgretimYili'],
-            '2026/2027',
-          );
+        if (i == 7) {
+          expect(find.text('Öğrenci Bildirimi'), findsOneWidget);
+          expect(find.text('Ders Öğretmeni Bildirimi'), findsOneWidget);
         }
       }
       await tester.tap(find.byTooltip('Proje taleplerine dön'));
