@@ -2759,12 +2759,20 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             ),
           ),
         if (sekme == 0) ...[
-          _kart('Form Yanıt Durumu', Icons.bar_chart, [
+          _kart('Proje Ödevi Genel Durumu', Icons.bar_chart, [
             _istatistik([
               ('Öğrenci', toplam, Colors.blue),
-              ('Alındı', alinan, Colors.green),
-              ('Bekliyor', toplam - alinan, Colors.orange),
+              ('Yanıt', alinan, Colors.green),
+              ('Onaylı', analiz?['onayli'] as int? ?? 0, Colors.teal),
+              ('Atanan', analiz?['yerlesen'] as int? ?? 0, Colors.purple),
             ]),
+            Text(
+              analiz?['sonuclandi'] == true
+                  ? 'Proje seçimi sonuçlandırıldı.'
+                  : dagitimGuncel
+                      ? 'Ders dağıtımı onaylandı. Proje henüz sonuçlandırılmadı.'
+                      : 'Ders dağıtımı henüz onaylanmadı.',
+            ),
           ]),
           _kart('Form Bilgileri', Icons.assignment_outlined, [
             Text('${proje!['baslik']}'),
@@ -2774,6 +2782,28 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             ),
             Text('Son Gün: ${_tarihYaz(proje!['sonGun'] as String?)}'),
             if (link != null) SelectableText(link!),
+          ]),
+          _kart('Kısa Yol İşlemleri', Icons.bolt_outlined, [
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              _buton(
+                'Form Talebi / Paylaş',
+                Icons.assignment_outlined,
+                () async { ekran = 0; },
+                ikincil: true,
+              ),
+              _buton(
+                'Yanıtlara Git',
+                Icons.list_alt,
+                () => _ustSekmeyeGit(1),
+                ikincil: true,
+              ),
+              _buton(
+                'Dağıtıma Git',
+                Icons.shuffle_outlined,
+                () => _ustSekmeyeGit(3),
+                ikincil: true,
+              ),
+            ]),
           ]),
         ] else if (sekme == 2)
           _degerlendirme()
@@ -3568,6 +3598,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             ),
           ]),
       ],
+      const SizedBox(height: 12),
+      _bilgilendirme(),
     ],
   );
 
@@ -3826,6 +3858,16 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               _yeniIcerik()
             else if (detay) ...[
               _dortSekmeCubugu(),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.groups_outlined),
+                  title: Text('${widget.atama['SinifKodu']} Sınıfı'),
+                  subtitle: Text(
+                    'Proje Ödevi • ${b.egitimOgretimYili}',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
               if (ekran == 0) _davet(),
               if (ekran == 1) _yanitlar(),
               if (ekran == 2) _kontrolEkrani(),
@@ -4053,25 +4095,16 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   ? const Color(0xff7824ce)
                   : const Color(0xff008a24),
             ),
-          ] else if (ekran == 1 && !salt) ...[
-            if (sekme == 2) ...[
-              ..._dagitimButonlari(),
-              if (dagitimAsamasi != 2 &&
-                  dagitimGuncel &&
-                  !kriterDegisti &&
-                  plan == null)
-                _buton(
-                  analiz?['sonuclandi'] == true
-                      ? 'Sonuçlandırıldı'
-                      : 'Proje Seçimini Sonuçlandır',
-                  Icons.check_circle_outline,
-                  _sonuclandir,
-                  etkin:
-                      analiz?['sonuclanabilir'] == true &&
-                      analiz?['sonuclandi'] != true,
-                  renk: const Color(0xff008a24),
-                ),
-            ] else if (yanitSecimModu && dogrudanAktif) ...[
+          ] else if (ekran == 1 && sekme == 0 && !salt) ...[
+            _buton(
+              'Form Talebi / Paylaş',
+              Icons.assignment_outlined,
+              () async { ekran = 0; },
+              ikincil: true,
+            ),
+          ] else if (ekran == 1 && sekme == 1 && !salt) ...[
+            if (yanitSecimModu && dogrudanAktif) ...[
+
               _buton(
                 'Toplu Sil (${dogrudanSecim.length})',
                 Icons.delete_outline,
