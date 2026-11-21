@@ -502,6 +502,74 @@ void main() {
       );
     },
   );
+  testWidgets(
+    'onaylı dağıtım sonuçlandırılmadan listelenir, kesin öğretmen mesajı kapalı kalır',
+    (tester) async {
+      const kisi = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+      await tamDagitim();
+      await ogretmenEkle(kisi, 1);
+      final durum = await s.projeAnalizi(b, 1, fid);
+      expect(durum['sonuclandi'], false);
+      expect(durum['yerlesen'], 3);
+      final g = _ProjeYanitTestGoogle();
+      addTearDown(g.dispose);
+      Future<void> bekle() async {
+        for (var i = 0; i < 70; i++) {
+          await tester.runAsync(() async {
+            await Future<void>.delayed(const Duration(milliseconds: 25));
+          });
+          await tester.pump();
+          if (find.byType(LinearProgressIndicator).evaluate().isEmpty) break;
+        }
+        await tester.pumpAndSettle();
+      }
+      await tester.pumpWidget(MaterialApp(
+        home: RehberlikProjeOdevScreen(
+          service: s,
+          baglam: b,
+          formService: fs,
+          google: g,
+          hesapBagla: () async => 'test',
+          atama: const {
+            'RehberlikAtamaId': 1,
+            'SinifSubeId': 1,
+            'SinifKodu': '9/C',
+            'EgitimOgretimYili': '2026/2027',
+          },
+        ),
+      ));
+      await bekle();
+      await tester.tap(find.text('Sınıfın proje dersleri'));
+      await bekle();
+      await tester.tap(find.text('İşlem değiştir'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Atama Listesi').last);
+      await bekle();
+      expect(find.textContaining('Ders dağıtımı onaylandı • 3 öğrenci'), findsOneWidget);
+      expect(find.textContaining('101 • Öğrenci1'), findsWidgets);
+      final teacher = find.widgetWithText(
+        OutlinedButton, 'Öğretmene Mesaj Hazırla',
+      );
+      await tester.ensureVisible(teacher.first);
+      expect(tester.widget<OutlinedButton>(teacher.first).onPressed, isNull);
+      final tum = find.text('Tüm Öğretmenlere Mesaj Hazırla');
+      await tester.ensureVisible(tum);
+      await tester.tap(tum);
+      await bekle();
+      expect(find.textContaining('proje henüz sonuçlandırılmadı'), findsOneWidget);
+      final grup = find.widgetWithText(
+        FilledButton, 'Mesajı Düzenle / Gönderime Geç',
+      );
+      await tester.ensureVisible(grup.first);
+      expect(tester.widget<FilledButton>(grup.first).onPressed, isNull);
+      expect(find.byType(MesajlasmaScreen), findsNothing);
+      expect((await s.projeTalepleri(b, 1)).single['dagitimOnayli'], true);
+      expect((await s.projeTalepleri(b, 1)).single['sonuclandi'], false);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    },
+  );
+
   testWidgets('Formlarım aktif ve arşiv kayıtlarını ayrı gösterir', (tester) async {
     await fs.yayinDurumuKaydet(fb, fid, 'google-proje-form', false);
     await fs.isaretle(fb, fid, 'Arşivle');
