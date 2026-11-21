@@ -570,17 +570,58 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
     }
     final dagitim = <String, int>{};
     final sayilar = {for (final d in dersler) d: 0};
+    final onayli = rows.where((r) => r['onayli'] == true).toList();
+    // Her turda yalnız henüz yerleşmeyenlerin o turdaki tercihleri sayılır.
+    // En az tercih edilen ders önce ele alınır; eşitlikte ders adı,
+    // aynı dersin öğrencileri arasında okul numarası sırası korunur.
     for (var tercih = 0; tercih < 3; tercih++) {
-      for (final r in rows.where((r) => r['onayli'] == true)) {
-        final oid = '${r['OgrenciId']}';
-        if (dagitim.containsKey(oid)) continue;
-        final d = (r['tercihler'] as List)[tercih] as int;
-        if (kontenjan == null || sayilar[d]! < kontenjan[d]!) {
-          dagitim[oid] = d;
-          sayilar[d] = sayilar[d]! + 1;
+      final bekleyen = onayli.where(
+        (r) => !dagitim.containsKey('${r['OgrenciId']}'),
+      ).toList();
+      final sayim = <int, int>{};
+      for (final r in bekleyen) {
+        final ders = (r['tercihler'] as List)[tercih] as int;
+        sayim[ders] = (sayim[ders] ?? 0) + 1;
+      }
+      final siraliDersler = sayim.keys.toList()..sort((x, y) {
+        final azlik = sayim[x]!.compareTo(sayim[y]!);
+        if (azlik != 0) return azlik;
+        final adX = importNormalize((p['dersler'] as Map)['$x'] as String);
+        final adY = importNormalize((p['dersler'] as Map)['$y'] as String);
+        final ad = adX.compareTo(adY);
+        return ad != 0 ? ad : x.compareTo(y);
+      });
+      for (final ders in siraliDersler) {
+        for (final r in bekleyen.where(
+          (r) => (r['tercihler'] as List)[tercih] == ders,
+        )) {
+          if (kontenjan == null || sayilar[ders]! < kontenjan[ders]!) {
+            dagitim['${r['OgrenciId']}'] = ders;
+            sayilar[ders] = sayilar[ders]! + 1;
+          }
         }
       }
     }
+    // Tercih dışına atama yapılmaz. Açıkta kalan her onaylı öğrenci için
+    // birinci tercihinde bir ek yer öner; nihai karar öğretmendedir.
+    // Bu öneri mevcut yerleşimleri koruyarak gereken ek yer sayısını verir.
+    final onerilen = kontenjan == null
+        ? null
+        : Map<int, int>.from(kontenjan);
+    if (onerilen != null) {
+      for (final r in onayli.where(
+        (r) => !dagitim.containsKey('${r['OgrenciId']}'),
+      )) {
+        final ilk = (r['tercihler'] as List).first as int;
+        onerilen[ilk] = onerilen[ilk]! + 1;
+      }
+    }
+    final artislari = <String, int>{
+      if (onerilen != null)
+        for (final ders in dersler)
+          if (onerilen[ders]! > kontenjan![ders]!)
+            '$ders': onerilen[ders]! - kontenjan[ders]!,
+    };
     return {
       'dagitim': dagitim,
       'surum': p['surum'],
@@ -591,6 +632,7 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
       'kontenjan': kontenjan == null
           ? null
           : {for (final e in kontenjan.entries) '${e.key}': e.value},
+      'kontenjanOnerisi': artislari,
       'acikta': rows
           .where(
             (r) =>
