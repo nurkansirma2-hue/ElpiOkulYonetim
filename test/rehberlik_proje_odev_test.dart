@@ -776,6 +776,36 @@ void main() {
       );
     }
   });
+  test(
+    'temizlenmiş eski ham yanıt mükerrer tercih oluşturmaz',
+    () async {
+      await yanit(1, [1, 2, 3], id: 'kalan');
+      await yanit(1, [2, 1, 3], id: 'silinen');
+      expect(
+        (await s.projeTercihleri(b, 1, fid)).first['hatalar'],
+        contains('Aynı öğrenciye ait birden fazla yanıt var. Ortak formdan inceleyin.'),
+      );
+      // Eski cihaz kayıtlarında ham temizleme işareti bulunabilir.
+      // Bu kayıtlar yanlışlıkla tekrar aktif tercih sayılmamalı.
+      await db.update(
+        'BilgiToplamaYanit',
+        {
+          'HamYanit': '{"_yerelTemizlendi":true}',
+          'SoruAnlikGoruntusu': '[]',
+        },
+        where: 'FormId=? AND GoogleYanitId=?',
+        whereArgs: [fid, 'silinen'],
+      );
+      final rows = await s.projeTercihleri(b, 1, fid);
+      expect(rows.first['hatalar'], isEmpty);
+      expect(rows.first['bekliyor'], false);
+      expect(rows.first['yanitId'], isNotNull);
+      expect(
+        (await db.query('BilgiToplamaYanit', where: 'FormId=?', whereArgs: [fid])),
+        hasLength(2),
+      );
+    },
+  );
   test('silinen ve reddedilen yanıtlar tercih onayına alınmaz', () async {
     await yanit(1, [1, 2, 3]);
     final r = (await s.projeTercihleri(b, 1, fid)).first;
