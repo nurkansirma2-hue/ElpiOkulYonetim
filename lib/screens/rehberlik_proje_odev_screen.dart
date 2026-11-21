@@ -63,6 +63,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   final mesaj = TextEditingController();
   final arama = TextEditingController();
   final dagitimArama = TextEditingController();
+  final formArama = TextEditingController();
   int dagitimAsamasi = 0;
   int kapasiteSurumu = 0;
   bool kriterDegisti = false;
@@ -144,6 +145,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     mesaj.dispose();
     arama.dispose();
     dagitimArama.dispose();
+    formArama.dispose();
     if (widget.google == null) google.dispose();
     super.dispose();
   }
@@ -3673,38 +3675,101 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                     ),
                   ],
                 ),
-              for (final p in talepler)
+              TextField(
+                controller: formArama,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  hintText: 'Form veya ders ara',
+                  prefixIcon: Icon(Icons.search),
+                ),
+              ),
+              const SizedBox(height: 10),
+              for (final p in talepler.where(
+                (p) => '${p['baslik']} ${(p['dersler'] as Map).values.join(' ')}'
+                    .toLowerCase().contains(formArama.text.trim().toLowerCase()),
+              ))
                 Card(
                   key: ValueKey('proje-form-${p['formId']}'),
-                  child: ListTile(
-                    selected: formSecimi.contains(p['formId']),
-                    leading: formSecimModu
-                        ? Checkbox(
-                            value: formSecimi.contains(p['formId']),
-                            onChanged: busy || salt
-                                ? null
-                                : (_) => _formSec(p['formId'] as int),
-                          )
-                        : const Icon(Icons.assignment_outlined),
-                    title: Text(
-                      '${p['baslik']}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      '${(p['ogrenciler'] as List).length} öğrenci • ${widget.atama['SinifKodu']}',
-                    ),
-                    trailing: formSecimModu
-                        ? null
-                        : const Icon(Icons.chevron_right),
-                    onLongPress: busy || salt
-                        ? null
-                        : () => _formSec(p['formId'] as int),
-                    onTap: busy
-                        ? null
-                        : () => formSecimModu
-                              ? _formSec(p['formId'] as int)
-                              : _is(() => _formAc(p)),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ListTile(
+                        selected: formSecimi.contains(p['formId']),
+                        leading: formSecimModu
+                            ? Checkbox(
+                                value: formSecimi.contains(p['formId']),
+                                onChanged: busy || salt
+                                    ? null
+                                    : (_) => _formSec(p['formId'] as int),
+                              )
+                            : const Icon(Icons.assignment_outlined),
+                        title: Text('${p['baslik']}',
+                            maxLines: 2, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(
+                          '${widget.atama['SinifKodu']} • '
+                          '${(p['ogrenciler'] as List).length} öğrenci'
+                          '${p['formLinki'] != null ? ' • Google bağlı' : ''}',
+                        ),
+                        trailing: formSecimModu
+                            ? null
+                            : const Icon(Icons.chevron_right),
+                        onLongPress: busy || salt
+                            ? null
+                            : () => _formSec(p['formId'] as int),
+                        onTap: busy
+                            ? null
+                            : () => formSecimModu
+                                ? _formSec(p['formId'] as int)
+                                : _is(() => _formAc(p)),
+                      ),
+                      if (!formSecimModu) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                          child: Row(children: [
+                            if (p['dagitimOnayli'] == true)
+                              const Chip(
+                                avatar: Icon(Icons.check_circle_outline, size: 16),
+                                label: Text('Dağıtım onaylı'),
+                              )
+                            else
+                              const Chip(
+                                avatar: Icon(Icons.assignment_outlined, size: 16),
+                                label: Text('Dağıtım bekliyor'),
+                              ),
+                            if (p['sonuclandi'] == true)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 6),
+                                child: Chip(label: Text('Sonuçlandırıldı')),
+                              ),
+                          ]),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                          child: Wrap(spacing: 6, runSpacing: 6, children: [
+                            _buton(
+                              'Tercihleri Kontrol Et',
+                              Icons.fact_check_outlined,
+                              () => _formAc(p, islem: 2),
+                              ikincil: true,
+                            ),
+                            _buton(
+                              'Yanıtlar',
+                              Icons.list_alt,
+                              () => _formAc(p, islem: 1),
+                              ikincil: true,
+                            ),
+                            if (p['sonuclandi'] == true)
+                              _buton(
+                                'Atama Listesi',
+                                Icons.groups_outlined,
+                                () => _formAc(p, islem: 5),
+                                ikincil: true,
+                              ),
+                          ]),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               if (talepler.isEmpty)
