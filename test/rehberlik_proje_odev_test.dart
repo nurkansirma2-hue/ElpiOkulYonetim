@@ -785,6 +785,59 @@ void main() {
     },
   );
   test(
+    'az tercih edilen ders önce işlenir; eşitlikte ders adı belirleyicidir',
+    () async {
+      // Fizik iki kez, Matematik bir kez birinci tercih edildi.
+      await yanit(1, [2, 1, 3]);
+      await yanit(2, [1, 2, 3]);
+      await yanit(3, [2, 1, 3]);
+      await onay();
+      final plan = await s.projeDagitimOnizle(b, 1, fid, null);
+      expect((plan['dagitim'] as Map).keys.toList(), ['2', '1', '3']);
+      expect(plan['dagitim'], {'2': 1, '1': 2, '3': 2});
+      expect(plan['kontenjanOnerisi'], isEmpty);
+    },
+  );
+  test(
+    'ikinci ve üçüncü tercih turlarında öğrenci yalnız tercihine yerleşir',
+    () async {
+      await yanit(1, [1, 2, 3]);
+      await yanit(2, [1, 2, 3]);
+      await yanit(3, [1, 2, 3]);
+      await onay();
+      final plan = await s.projeDagitimOnizle(
+        b, 1, fid, {1: 1, 2: 1, 3: 1},
+      );
+      expect(plan['dagitim'], {'1': 1, '2': 2, '3': 3});
+      expect(plan['acikta'], 0);
+      expect(plan['kontenjanOnerisi'], isEmpty);
+    },
+  );
+  test(
+    'açıkta kalan için kontenjan önerilir; onaylı artışla yeniden dağıtılır',
+    () async {
+      await yanit(1, [1, 2, 3]);
+      await yanit(2, [1, 2, 3]);
+      await yanit(3, [2, 1, 3]);
+      await onay();
+      final once = await s.projeDagitimOnizle(
+        b, 1, fid, {1: 1, 2: 1, 3: 0},
+      );
+      expect(once['acikta'], 1);
+      expect(once['kontenjanOnerisi'], {'1': 1});
+      expect(once['dagitim'], {'3': 2, '1': 1});
+      expect((await s.projeTalepleri(b, 1)).single['dagitim'], isEmpty);
+      final sonra = await s.projeDagitimOnizle(
+        b, 1, fid, {1: 2, 2: 1, 3: 0},
+      );
+      expect(sonra['dagitim'], {'3': 2, '1': 1, '2': 1});
+      expect(sonra['acikta'], 0);
+      expect(sonra['kontenjanOnerisi'], isEmpty);
+      // Ön izleme onaydan önce asıl dağıtım durumunu değiştirmez.
+      expect((await s.projeTalepleri(b, 1)).single['dagitim'], isEmpty);
+    },
+  );
+  test(
     'yeni yanıt eski onayı ve bekleyen dağıtım ön izlemesini geçersiz kılar',
     () async {
       await yanit(1, [1, 2, 3]);
