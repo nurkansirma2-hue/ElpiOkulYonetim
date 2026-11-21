@@ -3517,7 +3517,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             'Atama Listesi',
             'Öğretmen Mesajları',
           ][ekran]
-        : 'Form Talepleri';
+        : 'Formlarım';
     return PopScope(
       canPop: !busy && !yeni && !detay && !formSecimModu,
       onPopInvokedWithResult: (didPop, _) {
@@ -3941,7 +3941,15 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             _buton(
               'PDF / Yazdır',
               Icons.print_outlined,
-              () => _export('pdf'),
+              () async {
+                final onceki = raporTuru;
+                raporTuru = 1; // Ders Bazlı Öğrenci Listesi
+                try {
+                  await _export('pdf');
+                } finally {
+                  raporTuru = onceki;
+                }
+              },
               ikincil: true,
             ),
           ] else if (ekran == 6 && !salt) ...[
