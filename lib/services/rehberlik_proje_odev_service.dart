@@ -289,6 +289,20 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
       whereArgs: [form],
       orderBy: 'Id DESC',
     );
+    // Ortak Yanıtlar ekranıyla aynı eski-sürüm ve silme denetimi.
+    // Yerel düzeltme orijinal Google yanıtını geçmişte tutabilir;
+    // eski sürüm ikinci aktif tercih olarak değerlendirilmemelidir.
+    final byId = {for (final y in yanitlar) y['Id']: y};
+    final eskiSurumler = <int>{};
+    for (final y in yanitlar) {
+      final raw = jsonDecode(y['HamYanit'] as String) as Map;
+      final duzeltme = raw['_yerelDuzeltme'];
+      if (duzeltme is! Map) continue;
+      final eski = byId[duzeltme['oncekiYanitId']];
+      if (eski != null && eski['GoogleYanitId'] == y['GoogleYanitId']) {
+        eskiSurumler.add(eski['Id'] as int);
+      }
+    }
     final son = <String, Map<String, Object?>>{};
     final silinen = (await tx.query(
       'UygulamaAyarlari',
@@ -299,9 +313,13 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
     for (final y in yanitlar) {
       final id = y['GoogleYanitId'] as String;
       final ozet = sha256.convert(utf8.encode(jsonEncode(id))).toString();
-      if (!silinen.contains('bilgi_toplama_silinen:$form:$ozet')) {
-        son.putIfAbsent(id, () => y);
+      final raw = jsonDecode(y['HamYanit'] as String) as Map;
+      if (eskiSurumler.contains(y['Id']) ||
+          raw['_yerelTemizlendi'] == true ||
+          silinen.contains('bilgi_toplama_silinen:$form:$ozet')) {
+        continue;
       }
+      son.putIfAbsent(id, () => y);
     }
     final eslesen = <int, List<Map<String, Object?>>>{};
     final belirsiz = <Map<String, Object?>>[];
