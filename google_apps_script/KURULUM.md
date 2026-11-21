@@ -2,7 +2,7 @@
 
 ## 21 Kasım 2026 — Proje Ödevleri için doğrudan yanıt kimliği
 
-Bu bölüm kaynak kod değişikliğidir; canlı dağıtımın güncellendiği anlamına gelmez.
+Kaynak kod ve canlı dağıtım durumu aşağıda ayrı belirtilmiştir.
 
 - Proje Ödevleri → Yanıtlar listesi `okulYanitlariOku(formId)` ile okunur.
   Liste ve silme aynı `FormResponse.getId()` değerini kullanır. İlk seçilen satır
@@ -29,7 +29,20 @@ Bu bölüm kaynak kod değişikliğidir; canlı dağıtımın güncellendiği an
   olduğu iddiası taşımaz. Gerçek hesapta dağıtım ve ayrı test formunda silme ayrıca
   yetkilendirilip doğrulanmadan üretimde çalıştığı söylenemez.
 
-Bu çalışma sırasında canlı betik güncellenmedi ve gerçek öğrenci yanıtı silinmedi.
+### Canlı dağıtım — 21 Kasım 2026, 12:07 (Europe/Istanbul)
+
+- Kullanıcının ayrı canlı dağıtım onayıyla mevcut betiğin `Kod.gs` dosyası,
+  bu klasördeki `Code.gs` içeriğiyle güncellendi; aktarılan metnin eşitliği denetlendi.
+- Mevcut API dağıtımı **8 → 9 numaralı sürüm** olarak güncellendi.
+  Google arayüzünde “Dağıtım başarıyla güncellendi” sonucu görüldü.
+- Dağıtım kimliği değişmedi:
+  `AKfycbzqt5tBBAmgmHmmpPjWVxc7cNqpQF2YtcnXS9GDHSp6BJ5Rs21OUkhJsxOVNFp7jpRf`.
+- `OgretmenGorus.gs`, manifest, OAuth kapsamları ve `MYSELF` erişimi değiştirilmedi.
+- Bu doğrulama kod aktarımı ve sürüm yayımlama sonucunu kapsar. Yayımlanmış
+  API'ye uygulamadan salt okunur çağrı ve telefondan uçtan uca silme henüz
+  doğrulanmadı; gerçek öğrenci yanıtı silinmedi.
+- Telefonda güncel uygulamadan **Yanıtları Getir** ile liste yeniden okunmalıdır.
+  Toplu Sil, doğrudan yanıt listesi başarıyla doğrulanınca etkinleşir.
 
 Bu klasördeki `Code.gs` ve `appsscript.json`, Flutter uygulamasındaki
 **Google Forms ve uygulamadan sil** işlemi içindir. SQL/API veya paket değişikliği yoktur.
