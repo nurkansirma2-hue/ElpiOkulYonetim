@@ -689,7 +689,34 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     await _kontrol();
     await _yukle();
     if (dogrudanIsteniyor) await _dogrudanYukle();
-    sonuc = 'Google yanıtları alındı.';
+    // Native Google Forms ve REST/SQLite farklı yanıt kimlikleri kullanabilir.
+    // Öğrenci numarası yalnız tutarsızlığı bildirmek içindir, silme yetkisi değildir.
+    if (dogrudanYanitlar != null) {
+      final uzak = <int, int>{}, yerel = <int, int>{};
+      for (final row in dogrudanYanitlar!) {
+        final no = _dogrudanOkulNo(row);
+        if (no != null) uzak[no] = (uzak[no] ?? 0) + 1;
+      }
+      for (final row in hamYanitlar) {
+        final no = int.tryParse((row['GirilenOkulNo'] ?? '').toString());
+        if (no != null) yerel[no] = (yerel[no] ?? 0) + 1;
+      }
+      final uyusmayan = {...uzak.keys, ...yerel.keys}
+          .where((no) => uzak[no] != yerel[no])
+          .toList()..sort();
+      if (uyusmayan.isNotEmpty) {
+        hata = 'Google Form ve SQLite yanıt sayıları farklı. '
+            'Kontrol gereken öğrenci numaraları: '
+            '${uyusmayan.take(12).join(', ')}'
+            '${uyusmayan.length > 12 ? ' ve diğerleri' : ''}. '
+            'Yanıt kimlikleri farklı olduğu için doğrulanmamış kayıtlar '
+            'otomatik silinmedi. Onaylı tercihler korundu.';
+        sonuc = null;
+        plan = null;
+        return;
+      }
+    }
+    sonuc = 'Google yanıtları alındı ve yerel yanıt sayıları kontrol edildi.';
     plan = null;
   }
 
