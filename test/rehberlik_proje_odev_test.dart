@@ -2260,6 +2260,14 @@ void main() {
         await tester.tap(find.text(ad).last);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
+        if (i == 2) {
+          // Genel Bilgi Formu'na gereksiz Düzenle geçişi kaldırıldı;
+          // proje tercihlerinin yenileme ve onay işlemleri korunur.
+          expect(find.text('Düzenle'), findsNothing);
+          expect(find.text('Google Yanıtlarını Yenile'), findsOneWidget);
+          expect(find.text('Geçerlileri seç'), findsOneWidget);
+          expect(find.textContaining('Onayla ('), findsWidgets);
+        }
         await capture('${width.toInt()}-${i + 4}-$ad');
         if (i == 4) {
           await tester.tap(find.text('Belgelerim’e Kaydet'));
