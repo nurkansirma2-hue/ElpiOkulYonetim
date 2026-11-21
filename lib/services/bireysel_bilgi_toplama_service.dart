@@ -1275,6 +1275,8 @@ class BireyselBilgiToplamaService {
         .where(
           (y) =>
               !eskiSurumler.contains(y['Id']) &&
+              (jsonDecode(y['HamYanit'] as String) as Map)['_yerelTemizlendi'] !=
+                  true &&
               !silinenler.contains(
                 _silmeAnahtari(formId, y['GoogleYanitId'] as String),
               ) &&
