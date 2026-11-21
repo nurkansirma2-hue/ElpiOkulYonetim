@@ -1968,11 +1968,15 @@ void main() {
     )).singleWhere((p) => p['formId'] == fid);
     expect(kayit['kontenjan'], {'1': 1, '2': 1, '3': 1});
     expect(kayit['dagitim'], {'1': 1, '2': 2, '3': 3});
-    await tester.tap(find.text('Proje Seçimini Sonuçlandır'));
+    final sonucDugmesi = find.widgetWithText(
+      FilledButton, 'Proje Seçimini Sonuçlandır',
+    ).first;
+    await tester.ensureVisible(sonucDugmesi);
+    await tester.tap(sonucDugmesi);
     await bekle();
     await tester.tap(find.text('Onayla').last);
     await bekle();
-    expect(find.text('Sonuçlandırıldı'), findsOneWidget);
+    expect((await s.projeAnalizi(b, 1, fid))['sonuclandi'], true);
     await capture('400-5-degerlendirme-sonuc');
     // Kesin dağıtımın yeni Atama Listesi'nde görünmesi.
     await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
@@ -1992,7 +1996,9 @@ void main() {
     expect(find.text('Mesajı Düzenle / Gönderime Geç'), findsWidgets);
     await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
     await bekle();
-    final mesaj = find.widgetWithText(FilledButton, 'Öğretmene Mesaj').first;
+    final mesaj = find.widgetWithText(
+      FilledButton, 'Mesajı Düzenle / Gönderime Geç',
+    ).first;
     await tester.ensureVisible(mesaj);
     await tester.pumpAndSettle();
     await tester.tap(mesaj);
