@@ -753,6 +753,35 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
 
   // Tercih denetiminden önce Google'daki silmeleri yerel kayda yansıt.
   // Ağ/izin hatasında yerel verileri silme; eski durumun doğrulanamadığını bildir.
+  Future<void> _pasifOgrenciyiCikar(Map<String, dynamic> row) async {
+    final oid = row['OgrenciId'] as int?;
+    if (oid == null || (row['OgrenciAktif'] == 1 && row['KayitAktif'] == 1)) {
+      throw StateError('Yalnız pasif öğrenciler proje listesinden çıkarılabilir.');
+    }
+    final id = formId;
+    final ad = '${row['OkulNo']} • ${row['Ad']} ${row['Soyad']}';
+    if (!await _onay(
+      'Pasif öğrenciyi projeden çıkar',
+      '$ad yalnızca seçili proje ödevinin öğrenci listesinden çıkarılacak. '
+      'Google Form yanıtı, okul öğrenci kaydı ve diğer projeler korunacak. '
+      'Varsa mevcut ders dağıtımı yeniden onay gerektirecek. Devam edilsin mi?',
+    )) {
+      return;
+    }
+    await _kontrol();
+    if (proje == null || formId != id) {
+      throw StateError('Proje seçimi değişti. İşlem durduruldu.');
+    }
+    await widget.service.projePasifOgrenciyiCikar(b, atama, id, oid);
+    onaySecimi.remove(oid);
+    plan = null;
+    manuelPlan = null;
+    kriterDegisti = false;
+    dagitimAsamasi = 0;
+    await _yukle();
+    sonuc = '$ad seçili proje listesinden çıkarıldı.';
+  }
+
   Future<void> _tercihleriAc() async {
     if (!salt && form?['Durum'] == 'Aktif') {
       try {
@@ -2306,6 +2335,11 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
           onSelectionChanged: busy
               ? null
               : (s) => _is(() async {
+                  if (s.single == 2) {
+                    // Değerlendirmede ilk adım doğrudan Tercih Kontrolü.
+                    await _tercihleriAc();
+                    return;
+                  }
                   sekme = s.single;
                   _yanitSeciminiKapat();
                   if (sekme == 1 && dogrudanIsteniyor) await _dogrudanYukle();
@@ -2610,7 +2644,17 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
         ))
           Card(
             child: CheckboxListTile(
-              secondary: !salt && r['yanitId'] != null
+              secondary: !salt &&
+                      r['OgrenciId'] != null &&
+                      (r['OgrenciAktif'] != 1 || r['KayitAktif'] != 1)
+                  ? IconButton(
+                      tooltip: 'Pasif öğrenciyi proje listesinden çıkar',
+                      icon: const Icon(Icons.person_remove_outlined),
+                      onPressed: busy
+                          ? null
+                          : () => _is(() => _pasifOgrenciyiCikar(r)),
+                    )
+                  : !salt && r['yanitId'] != null
                   ? IconButton(
                       tooltip: 'Tercihleri düzenle',
                       color: Theme.of(context).colorScheme.primary,
