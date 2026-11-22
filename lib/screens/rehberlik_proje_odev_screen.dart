@@ -3694,39 +3694,219 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     if (mounted) await _yukle();
   }
 
-  Widget _bilgilendirme() => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      _bilgi(
-        kesinSonucHazir
-            ? 'Proje seçimi sonuçlandırıldı. Öğrenci ve ders öğretmenine '
-              'ayrı mesaj taslakları hazırlanabilir.'
-            : 'Bildirimler için dağıtımı onaylayıp proje seçimini '
-              'sonuçlandırın.',
-        uyari: !kesinSonucHazir,
-      ),
-      _kart('Öğrenci Bildirimi', Icons.school_outlined, [
-        const Text('Her öğrenciye yalnız kendi atandığı ders bildirilecek. '
-            'Alıcı ve mesajlar ortak Mesajlaşma ekranında kontrol edilir.'),
-        _buton(
-          'Öğrenci Mesajını Hazırla',
-          Icons.message_outlined,
-          _ogrenciBildirimleriHazirla,
-          etkin: kesinSonucHazir && !salt,
+
+  Future<void> _seciliBildirimMesajiniHazirla() async {
+    await _kontrol();
+    if (!kesinSonucHazir) {
+      throw StateError('Önce proje seçimini sonuçlandırın.');
+    }
+    if (bildirimGorunum == 0) {
+      final ids = Set<int>.of(bildirimOgrenciSecimi);
+      if (ids.isEmpty) throw StateError('Mesaj için öğrenci seçin.');
+      await _ogrenciBildirimleriHazirla(secilenler: ids);
+      return;
+    }
+
+    final ids = Set<int>.of(bildirimDersSecimi);
+    if (ids.isEmpty) throw StateError('Mesaj için ders seçin.');
+    final dersler = _atananDersler
+        .where((d) => ids.contains(d['dersId'])).toList();
+    if (dersler.length != ids.length ||
+        dersler.any((d) => (d['ogretmenler'] as List).isEmpty)) {
+      throw StateError('Seçilen ders veya öğretmen eşleştirmesi değişti.');
+    }
+    final gruplar = _ogretmenMesajGruplari.where(
+      (g) => (g['dersler'] as List<Map<String, dynamic>>)
+          .any((d) => ids.contains(d['dersId'])),
+    ).toList();
+    if (gruplar.isEmpty) {
+      throw StateError('Seçili derslerin doğrulanmış öğretmeni bulunamadı.');
+    }
+    // Mesajlaşma öğretmenler için tek metin kullanır. Farklı öğretmenlerin
+    // öğrenci listelerini karıştırmamak için ayrı onaylı mesaj ekranları aç.
+    for (final grup in gruplar) {
+      if (!mounted) return;
+      await _ogretmenGrupMesaji(
+        grup['kisiId'] as String,
+        secilenDersler: ids,
+      );
+    }
+  }
+
+  Widget _bilgilendirme() {
+    if (!atamaListesiHazir) {
+      return _bilgi(
+        'Bilgilendirme listeleri için önce güncel ders dağıtımını onaylayın.',
+        uyari: true,
+      );
+    }
+    final ogrenciRows = (analiz!['ogrenciler'] as List)
+        .cast<Map<String, dynamic>>()
+        .where((r) => r['dersId'] != null).toList();
+    final dersRows = _atananDersler;
+    final ogrenciModu = bildirimGorunum == 0;
+    final secim = ogrenciModu
+        ? bildirimOgrenciSecimi : bildirimDersSecimi;
+    final uygunDersler = dersRows
+        .where((d) => (d['ogretmenler'] as List).isNotEmpty)
+        .map((d) => d['dersId'] as int).toSet();
+    final secilebilir = ogrenciModu
+        ? ogrenciRows.map((r) => r['OgrenciId'] as int).toSet()
+        : uygunDersler;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _istatistik([
+          ('Atanan', ogrenciRows.length, Colors.green),
+          ('Ders', dersRows.length, Colors.blue),
+          ('Seçili', secim.length, Colors.orange),
+        ]),
+        const SizedBox(height: 10),
+        SegmentedButton<int>(
+          key: const ValueKey('bildirim-gorunum'),
+          segments: const [
+            ButtonSegment(
+              value: 0,
+              label: Text('Öğrenci Bazlı'),
+              icon: Icon(Icons.person_outline),
+            ),
+            ButtonSegment(
+              value: 1,
+              label: Text('Ders Bazlı'),
+              icon: Icon(Icons.menu_book_outlined),
+            ),
+          ],
+          selected: {bildirimGorunum},
+          onSelectionChanged: busy ? null : (v) =>
+              setState(() => bildirimGorunum = v.first),
         ),
-      ]),
-      _kart('Ders Öğretmeni Bildirimi', Icons.groups_outlined, [
-        const Text(
-          'Birden fazla ders aynı öğretmene aitse öğrenci listeleri '
-          'tek mesaj taslağında birleştirilir.',
-        ),
-        if (atamaListesiHazir)
-          _ogretmenMesajlari()
+        const SizedBox(height: 10),
+        if (!kesinSonucHazir)
+          _bilgi(
+            'Ders dağıtımı onaylandı. Kesin sonuç mesajları için '
+            'proje seçimini sonuçlandırın.',
+            uyari: true,
+          )
         else
-          const Text('Henüz onaylı dağıtım yok.'),
-      ]),
-    ],
-  );
+          _bilgi(
+            ogrenciModu
+                ? 'Seçilen öğrencilerin her birine kendi atandığı ders '
+                  'bildirilecek. Gönderim öncesinde mesaj kontrol edilir.'
+                : 'Seçilen dersler için öğretmenlere öğrenci listeleri '
+                  'hazırlanır. Aynı öğretmenin dersleri birleştirilir; '
+                  'farklı öğretmenler sırayla açılır.',
+          ),
+        CheckboxListTile(
+          key: const ValueKey('bildirim-tumunu-sec'),
+          title: Text('Tümünü Seç (${secim.length}/${secilebilir.length})'),
+          value: secilebilir.isNotEmpty &&
+              secim.containsAll(secilebilir),
+          onChanged: busy || salt || secilebilir.isEmpty
+              ? null
+              : (v) => setState(() {
+                  secim.clear();
+                  if (v == true) secim.addAll(secilebilir);
+                }),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+        ),
+        if (ogrenciModu)
+          for (final r in ogrenciRows)
+            Card(
+              child: CheckboxListTile(
+                key: ValueKey('bildirim-ogrenci-${r['OgrenciId']}'),
+                value: bildirimOgrenciSecimi
+                    .contains(r['OgrenciId']),
+                onChanged: busy || salt
+                    ? null
+                    : (v) => setState(() {
+                        final id = r['OgrenciId'] as int;
+                        if (v == true) {
+                          bildirimOgrenciSecimi.add(id);
+                        } else {
+                          bildirimOgrenciSecimi.remove(id);
+                        }
+                      }),
+                title: Text(
+                  '${r['OkulNo']} • ${r['Ad']} ${r['Soyad']}',
+                ),
+                subtitle: Text(
+                  'Atanan ders: '
+                  '${projeDersleri[r['dersId'] as int] ?? 'Bilinmiyor'}',
+                ),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+            )
+        else
+          for (final d in dersRows)
+            Card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  CheckboxListTile(
+                    key: ValueKey('bildirim-ders-${d['dersId']}'),
+                    value: bildirimDersSecimi.contains(d['dersId']),
+                    onChanged: busy || salt ||
+                            (d['ogretmenler'] as List).isEmpty
+                        ? null
+                        : (v) => setState(() {
+                            final id = d['dersId'] as int;
+                            if (v == true) {
+                              bildirimDersSecimi.add(id);
+                            } else {
+                              bildirimDersSecimi.remove(id);
+                            }
+                          }),
+                    title: Text('${d['dersAdi']}'),
+                    subtitle: Text(
+                      (d['ogretmenler'] as List).isEmpty
+                          ? 'Öğretmen eşleştirilmemiş • '
+                              '${d['yerlesen']} öğrenci'
+                          : 'Öğretmen: '
+                              '${(d['ogretmenler'] as List).map((k) => k['AdSoyad']).join(', ')} '
+                              '• ${d['yerlesen']} öğrenci',
+                    ),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    secondary: !salt &&
+                            (d['ogretmenler'] as List).isEmpty
+                        ? IconButton(
+                            tooltip: 'Öğretmen Eşleştir',
+                            icon: const Icon(Icons.person_add_alt_outlined),
+                            onPressed: busy ? null : () =>
+                                _is(() => _dersOgretmeniSec(d['dersId'] as int)),
+                          )
+                        : null,
+                  ),
+                  for (final r in ogrenciRows.where(
+                    (r) => r['dersId'] == d['dersId'],
+                  ))
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 12, 6),
+                      child: Text(
+                        '${r['OkulNo']} • ${r['Ad']} ${r['Soyad']}',
+                      ),
+                    ),
+                  const SizedBox(height: 6),
+                ],
+              ),
+            ),
+        if (secilebilir.isEmpty)
+          _bilgi(
+            ogrenciModu
+                ? 'Atanmış öğrenci yok.'
+                : 'Öğretmeni eşleştirilmiş ders yok.',
+            uyari: true,
+          ),
+        const SizedBox(height: 8),
+        _buton(
+          'Mesaj Hazırla (${secim.length})',
+          Icons.message_outlined,
+          _seciliBildirimMesajiniHazirla,
+          etkin: kesinSonucHazir && !salt && secim.isNotEmpty,
+        ),
+      ],
+    );
+  }
 
   Widget _raporlar() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4221,20 +4401,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             ),
           ] else if (ekran == 3 && !salt) ...[
             ..._dagitimButonlari(),
-          ] else if (ekran == 7 && !salt) ...[
-            _buton(
-              'Öğrenci Mesajını Hazırla',
-              Icons.school_outlined,
-              _ogrenciBildirimleriHazirla,
-              etkin: kesinSonucHazir,
-            ),
-            _buton(
-              'Öğretmen Mesajlarını Gör',
-              Icons.groups_outlined,
-              () async { ekran = 6; },
-              ikincil: true,
-              etkin: kesinSonucHazir,
-            ),
           ] else if (ekran == 5 && !salt) ...[
             _buton(
               'Tüm Öğretmenlere Mesaj Hazırla',
