@@ -548,8 +548,8 @@ void main() {
       await tester.ensureVisible(ilk);
       await tester.tap(ilk);
       await bekle();
-      expect(find.text('Mesaj Hazırla (1)'), findsOneWidget);
-      final buton = find.widgetWithText(FilledButton, 'Mesaj Hazırla (1)');
+      expect(find.text('Öğrenciye Mesaj At (1)'), findsOneWidget);
+      final buton = find.widgetWithText(FilledButton, 'Öğrenciye Mesaj At (1)');
       await tester.ensureVisible(buton);
       expect(tester.widget<FilledButton>(buton).onPressed, isNull);
       await tester.tap(find.text('Ders Bazlı'));
@@ -558,9 +558,9 @@ void main() {
       await tester.ensureVisible(ders1);
       await tester.tap(ders1);
       await bekle();
-      expect(find.text('Mesaj Hazırla (1)'), findsOneWidget);
+      expect(find.text('Öğretmene Mesaj At (1)'), findsOneWidget);
       expect(tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Mesaj Hazırla (1)'),
+        find.widgetWithText(FilledButton, 'Öğretmene Mesaj At (1)'),
       ).onPressed, isNull);
       expect(find.byType(MesajlasmaScreen), findsNothing);
       expect((await s.projeTalepleri(b, 1)).single['dagitimOnayli'], true);
@@ -616,19 +616,20 @@ void main() {
       await bekle();
       expect(find.text('Öğrenci Bazlı'), findsOneWidget);
       expect(find.text('Ders Bazlı'), findsOneWidget);
-      expect(find.text('Mesaj Hazırla (0)'), findsOneWidget);
+      expect(find.text('Yenile'), findsNothing);
+      expect(find.text('Öğrenciye Mesaj At (0)'), findsOneWidget);
       final tek = find.byKey(const ValueKey('bildirim-ogrenci-1'));
       await tester.ensureVisible(tek);
       await tester.tap(tek);
       await bekle();
-      expect(find.text('Mesaj Hazırla (1)'), findsOneWidget);
+      expect(find.text('Öğrenciye Mesaj At (1)'), findsOneWidget);
       await tester.tap(tek);
       await bekle();
-      expect(find.text('Mesaj Hazırla (0)'), findsOneWidget);
+      expect(find.text('Öğrenciye Mesaj At (0)'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('bildirim-tumunu-sec')));
       await bekle();
-      expect(find.text('Mesaj Hazırla (3)'), findsOneWidget);
-      final hazirla = find.text('Mesaj Hazırla (3)');
+      expect(find.text('Öğrenciye Mesaj At (3)'), findsOneWidget);
+      final hazirla = find.text('Öğrenciye Mesaj At (3)');
       await tester.ensureVisible(hazirla);
       await tester.tap(hazirla);
       await bekle();
@@ -731,13 +732,13 @@ void main() {
         await tester.tap(kart);
         await bekle();
       }
-      expect(find.text('Mesaj Hazırla (2)'), findsOneWidget);
+      expect(find.text('Öğretmene Mesaj At (2)'), findsOneWidget);
       // Öğretmeni eşleştirilmemiş ders yanlış alıcıya gönderilemez.
       final eksik = find.byKey(const ValueKey('bildirim-ders-3'));
       await tester.ensureVisible(eksik);
       expect(tester.widget<CheckboxListTile>(eksik).onChanged, isNull);
       expect(find.byTooltip('Öğretmen Eşleştir'), findsOneWidget);
-      final hazirla = find.text('Mesaj Hazırla (2)');
+      final hazirla = find.text('Öğretmene Mesaj At (2)');
       await tester.ensureVisible(hazirla);
       await tester.tap(hazirla);
       await bekle();
@@ -2003,8 +2004,8 @@ void main() {
     await tester.ensureVisible(ders);
     await tester.tap(ders);
     await bekle();
-    expect(find.text('Mesaj Hazırla (1)'), findsOneWidget);
-    final mesaj = find.text('Mesaj Hazırla (1)');
+    expect(find.text('Öğretmene Mesaj At (1)'), findsOneWidget);
+    final mesaj = find.text('Öğretmene Mesaj At (1)');
     await tester.ensureVisible(mesaj);
     await tester.tap(mesaj);
     await bekle();
