@@ -63,7 +63,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   final mesaj = TextEditingController();
   final arama = TextEditingController();
   final dagitimArama = TextEditingController();
-  final formArama = TextEditingController();
   final formDurumlari = <int, Map<String, dynamic>>{};
   int formFiltre = 0;
   int dagitimAsamasi = 0;
@@ -150,7 +149,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     mesaj.dispose();
     arama.dispose();
     dagitimArama.dispose();
-    formArama.dispose();
     if (widget.google == null) google.dispose();
     super.dispose();
   }
@@ -4146,20 +4144,9 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                     setState(() => formFiltre = secim.first),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: formArama,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  hintText: 'Form veya ders ara',
-                  prefixIcon: Icon(Icons.search),
-                ),
-              ),
-              const SizedBox(height: 10),
               for (final p in talepler.where((p) =>
                 (formDurumlari[p['formId']]?['arsiv'] == true) ==
-                    (formFiltre == 1) &&
-                '${p['baslik']} ${(p['dersler'] as Map).values.join(' ')}'
-                    .toLowerCase().contains(formArama.text.trim().toLowerCase()),
+                    (formFiltre == 1),
               ))
                 Card(
                   key: ValueKey('proje-form-${p['formId']}'),
@@ -4233,33 +4220,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                               ),
                           ]),
                         ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                          child: Wrap(spacing: 6, runSpacing: 6, children: [
-                            _buton(
-                              'Tercihleri Kontrol Et',
-                              Icons.fact_check_outlined,
-                              () async {
-                                await _formAc(p, islem: 1);
-                                await _tercihleriAc();
-                              },
-                              ikincil: true,
-                            ),
-                            _buton(
-                              'Yanıtlar',
-                              Icons.list_alt,
-                              () => _formAc(p, islem: 1, seciliSekme: 1),
-                              ikincil: true,
-                            ),
-                            if (p['dagitimOnayli'] == true)
-                              _buton(
-                                'Bilgilendirme / Listeler',
-                                Icons.groups_outlined,
-                                () => _formAc(p, islem: 7),
-                                ikincil: true,
-                              ),
-                          ]),
-                        ),
                       ],
                     ],
                   ),
@@ -4269,10 +4229,8 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                 _bilgi('Henüz proje formu yok. Yeni form talebi oluşturun.')
               else if (!talepler.any((p) =>
                   (formDurumlari[p['formId']]?['arsiv'] == true) ==
-                      (formFiltre == 1) &&
-                  '${p['baslik']} ${(p['dersler'] as Map).values.join(' ')}'
-                      .toLowerCase().contains(formArama.text.trim().toLowerCase())))
-                _bilgi('Bu filtreye uygun proje formu bulunamadı.'),
+                      (formFiltre == 1)))
+                _bilgi('Bu bölümde proje formu bulunamadı.'),
             ],
           ],
         ),
