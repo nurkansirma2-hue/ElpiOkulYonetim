@@ -503,10 +503,49 @@ extension MesajAliciIslemleri on MesajlasmaService {
         final dersler = parcalar[4].split(',').map(int.tryParse).toList();
         final imza = parcalar[5];
         if (atama == null || form == null || kisiId.isEmpty ||
-            kisiId.contains(':') || dersler.length < 2 ||
+            dersler.length < 2 ||
             dersler.any((id) => id == null || id <= 0) ||
             dersler.toSet().length != dersler.length ||
-            !RegExp(r'^[a-f0-9]{64}
+            imza.length != 64 ||
+            !RegExp(r'^[a-f0-9]{64}').hasMatch(imza) ||
+            kisiler.isEmpty || kisiler.any(
+              (k) => k.tur != MesajKisiTuru.ogretmen ||
+                  k.kisiId != kisiId,
+            )) {
+          throw StateError('Proje sonucundan yeni mesaj hazırlayın.');
+        }
+        final rehberlik = BireyselRehberlikService(modGetir: _mod);
+        final baglam = BireyselRehberlikBaglami(
+          okulId: b.okulId,
+          ogretmenProfilId: b.ogretmenId,
+          okulAdi: b.okulAdi,
+          ogretmenAdi: b.ogretmenAdi,
+          egitimOgretimYili: b.yil,
+        );
+        final paketler = <Map<String, dynamic>>[];
+        for (final dersId in dersler.cast<int>()) {
+          final paket = await rehberlik.projeSonucMesajiniDogrula(
+            db, baglam, atama, form, dersId,
+          );
+          if (!(paket['aliciIds'] as List).contains(kisiId) ||
+              kisiler.any((k) => k.sinifId != paket['sinifId'])) {
+            throw StateError(
+              'Proje sonucu veya ders öğretmeni değişti. Yeni mesaj hazırlayın.',
+            );
+          }
+          paketler.add(paket);
+        }
+        final guncelImza = sha256.convert(utf8.encode(jsonEncode([
+          for (var i = 0; i < dersler.length; i++)
+            [dersler[i], paketler[i]['imza']],
+        ]))).toString();
+        if (guncelImza != imza) {
+          throw StateError(
+            'Proje sonucu veya ders öğretmeni değişti. Yeni mesaj hazırlayın.',
+          );
+        }
+        return;
+      }
       if (parcalar.length != 4 ||
           parcalar.take(3).any((v) => int.tryParse(v) == null)) {
         throw StateError('Proje sonucundan yeni mesaj hazırlayın.');
