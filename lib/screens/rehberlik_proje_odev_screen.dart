@@ -3692,7 +3692,11 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
         baslangicOgrenciIdleri: ogrenciIds,
         izinliOgrenciIdleri: ogrenciIds,
         ogrenciMesajlari: mesajlar,
+        // Metin her öğrenci için ayrıca belirlenir; temel değer sadece
+        // ortak mesaj motorunun boş mesaj doğrulamasını karşılar.
+        baslangicMetni: 'Proje ödevi bilgilendirmesi',
         gonderimOnizlemesiniAc: true,
+        yalnizGonderimOnayi: true,
         takipPenceresi: true,
         kaynakKontrol: (mb) async {
           await _kontrol();
