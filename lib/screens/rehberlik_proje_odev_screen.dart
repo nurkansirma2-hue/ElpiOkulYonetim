@@ -3665,13 +3665,16 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
         (secilenler != null && !ogrenciIds.containsAll(secilenler))) {
       throw StateError('Seçilen öğrenciler artık güncel atama listesinde bulunmuyor.');
     }
+    final sinifKodu = '${widget.atama['SinifKodu']}'.replaceAll('-', '/');
     final mesajlar = <int, String>{
       for (final r in ogrenciSatirlari)
         r['OgrenciId'] as int:
-            'Sayın öğrenci/veli,\n'
-            '${widget.atama['SinifKodu']} sınıfında ${r['Ad']} '
-            '${r['Soyad']} (${r['OkulNo']}) için proje ödevi '
-            'dersi: ${r['dersAdi']}.\nBilginize.',
+            'Sevgili ${r['Ad']} ${r['Soyad']},\n\n'
+            '$sinifKodu Sınıfı Proje Ödevi\n\n'
+            'Proje ödevi alacağın ders: ${r['dersAdi']}\n\n'
+            'Başarılar dilerim.\n'
+            '${b.ogretmenAdi}\n'
+            '$sinifKodu Sınıf Öğretmeni',
     };
     if (!mounted) return;
     await Navigator.of(context).push(PageRouteBuilder(
@@ -3791,15 +3794,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
           selected: {bildirimGorunum},
           onSelectionChanged: busy ? null : (v) =>
               setState(() => bildirimGorunum = v.first),
-        ),
-        const SizedBox(height: 10),
-        _buton(
-          ogrenciModu
-              ? 'Öğrenciye Mesaj At (${secim.length})'
-              : 'Öğretmene Mesaj At (${secim.length})',
-          Icons.message_outlined,
-          _seciliBildirimMesajiniHazirla,
-          etkin: kesinSonucHazir && !salt && secim.isNotEmpty,
         ),
         const SizedBox(height: 10),
         if (!kesinSonucHazir)
@@ -4442,6 +4436,18 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               Icons.list_alt,
               () async { ekran = 5; },
               ikincil: true,
+            ),
+          ] else if (ekran == 7 && !salt) ...[
+            _buton(
+              bildirimGorunum == 0
+                  ? 'Öğrenciye Mesaj At (${bildirimOgrenciSecimi.length})'
+                  : 'Öğretmene Mesaj At (${bildirimDersSecimi.length})',
+              Icons.message_outlined,
+              _seciliBildirimMesajiniHazirla,
+              etkin: kesinSonucHazir &&
+                  (bildirimGorunum == 0
+                      ? bildirimOgrenciSecimi.isNotEmpty
+                      : bildirimDersSecimi.isNotEmpty),
             ),
           ] else if (ekran == 4) ...[
             _buton(
