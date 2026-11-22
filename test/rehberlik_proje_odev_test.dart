@@ -642,6 +642,14 @@ void main() {
         ),
         findsNothing,
       );
+      // En az bir geçerli veli numarası olduğunda otomatik gönderim
+      // ön izlemesinin açılması gerekir; boş takip ekranında kalmamalı.
+      await db.update(
+        'Ogrenci',
+        {'VeliAdi': 'Veli1', 'VeliTelefonu': '05321234567'},
+        where: 'OgrenciId=?',
+        whereArgs: [1],
+      );
       final hazirla = find.text('Öğrenciye Mesaj At (3)');
       await tester.ensureVisible(hazirla);
       await tester.tap(hazirla);
@@ -651,6 +659,10 @@ void main() {
       );
       expect(ekran.baslangicOgrenciIdleri, {1, 2, 3});
       expect(ekran.izinliOgrenciIdleri, {1, 2, 3});
+      expect(ekran.yalnizGonderimOnayi, true);
+      expect(ekran.gonderimOnizlemesiniAc, true);
+      expect(ekran.baslangicMetni, 'Proje ödevi bilgilendirmesi');
+      expect(find.text('Mesajı gönder'), findsOneWidget);
       expect(ekran.ogrenciMesajlari?[1],
           contains('Sevgili Öğrenci1 Uzun Soyadı,'));
       expect(ekran.ogrenciMesajlari?[1],
