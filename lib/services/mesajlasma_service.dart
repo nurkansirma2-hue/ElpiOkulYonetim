@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:sqflite/sqflite.dart';
 import '../core/calisma_modu.dart';
