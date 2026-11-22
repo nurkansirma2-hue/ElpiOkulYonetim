@@ -493,6 +493,186 @@ extension MesajAliciIslemleri on MesajlasmaService {
     }
     if (kaynak == 'RehberlikProjeSonuc') {
       final parcalar = (kayit ?? '').split(':');
+      // Öğretmenin birden fazla dersindeki sonuçlar tek mesajda
+      // birleştirilmişse her dersin yetkisi ve sonuç imzası aynı
+      // transaction içinde yeniden doğrulanır.
+      if (parcalar.length == 6 && parcalar[2] == 'ogretmen') {
+        final atama = int.tryParse(parcalar[0]);
+        final form = int.tryParse(parcalar[1]);
+        final kisiId = parcalar[3];
+        final dersler = parcalar[4].split(',').map(int.tryParse).toList();
+        final imza = parcalar[5];
+        if (atama == null || form == null || kisiId.isEmpty ||
+            kisiId.contains(':') || dersler.length < 2 ||
+            dersler.any((id) => id == null || id <= 0) ||
+            dersler.toSet().length != dersler.length ||
+            !RegExp(r'^[a-f0-9]{64}
+      if (parcalar.length != 4 ||
+          parcalar.take(3).any((v) => int.tryParse(v) == null)) {
+        throw StateError('Proje sonucundan yeni mesaj hazırlayın.');
+      }
+      final paket = await BireyselRehberlikService(modGetir: _mod)
+          .projeSonucMesajiniDogrula(
+            db,
+            BireyselRehberlikBaglami(
+              okulId: b.okulId,
+              ogretmenProfilId: b.ogretmenId,
+              okulAdi: b.okulAdi,
+              ogretmenAdi: b.ogretmenAdi,
+              egitimOgretimYili: b.yil,
+            ),
+            int.parse(parcalar[0]),
+            int.parse(parcalar[1]),
+            int.parse(parcalar[2]),
+          );
+      if (paket['imza'] != parcalar[3] ||
+          kisiler.any(
+            (k) =>
+                k.tur != MesajKisiTuru.ogretmen ||
+                k.sinifId != paket['sinifId'] ||
+                !(paket['aliciIds'] as List).contains(k.kisiId),
+          )) {
+        throw StateError(
+          'Proje sonucu veya ders öğretmeni değişti. Değerlendirmeden yeni mesaj hazırlayın.',
+        );
+      }
+    }
+    if (kaynak == 'OdevBildirim') {
+      final odev = await db.query(
+        'OdevTanim',
+        columns: ['OdevId'],
+        where:
+            'OdevId=? AND OgretmenProfilId=? AND EgitimOgretimYili=? AND Aktif=1',
+        whereArgs: [int.tryParse(kayit ?? ''), b.ogretmenId, b.yil],
+      );
+      if (odev.length != 1) {
+        throw StateError(
+          'Ödev silinmiş veya kapsamınızdan çıkmış; bildirim gönderilemez.',
+        );
+      }
+    }
+    if ({
+      MesajlasmaService.formPaylasimOgrenciModulu,
+      MesajlasmaService.formPaylasimVeliModulu,
+      MesajlasmaService.formDuzeltmeOgrenciModulu,
+    }.contains(kaynak)) {
+      final tur = kaynak == MesajlasmaService.formPaylasimVeliModulu
+          ? MesajKisiTuru.veli
+          : MesajKisiTuru.ogrenci;
+      if (kisiler.any((k) => k.tur != tur)) {
+        throw StateError('Alıcı türü kaynak form ile uyuşmuyor.');
+      }
+    }
+    await _formPaylasimKapsami(
+      db,
+      b,
+      kaynak,
+      kayit,
+      kisiler
+          .where((k) => k.tur != MesajKisiTuru.ogretmen)
+          .map((k) => int.parse(k.kisiId)),
+    );
+  }
+
+  Future<void> _aliciKontrol(
+    DatabaseExecutor db,
+    MesajBaglami b,
+    MesajKuyrugu q,
+    MesajAlicisi a,
+  ) async {
+    await _kontrol(db, b);
+    final guncel = await db.query(
+      'MesajKuyrugu',
+      columns: ['KaynakModul'],
+      where: 'KuyrukId=?',
+      whereArgs: [q.id],
+    );
+    if (guncel.length != 1 ||
+        guncel.single['KaynakModul'] == odevBildirimArsivModulu) {
+      throw StateError(
+        'Bu mesaj silindi veya arşivlendi; gönderim başlatılamaz.',
+      );
+    }
+
+    if (a.baglar.isEmpty) {
+      throw StateError(
+        'Alıcı kimliği bulunamadı; güncel bilgilerle yeni kuyruk hazırlayın.',
+      );
+    }
+    final adaylar = await _kisiler(
+      db,
+      b,
+      eskiVeliVarsayimi: a.baglar.any((r) => r['EskiKayit'] == 1),
+    );
+    final secilen = <MesajKisi>[];
+    for (final bag in a.baglar) {
+      final eslesen = adaylar
+          .where(
+            (k) =>
+                k.tur.kod == bag['Tur'] &&
+                k.kisiId == bag['KisiId'] &&
+                k.sinifId == bag['SinifSubeId'],
+          )
+          .toList();
+      if (eslesen.length != 1 || eslesen.single.normalizeTelefon != a.telefon) {
+        throw StateError(
+          'Alıcının telefonu veya ders kapsamı değişti; güncel bilgilerle yeni mesaj hazırlayın.',
+        );
+      }
+      final k = eslesen.single;
+      final onceki = jsonDecode(bag['AnlikGoruntu'] as String) as Map;
+      if (bag['EskiKayit'] == 1
+          ? onceki['aciklama'] != k.aciklama
+          : jsonEncode(onceki) != jsonEncode(k.anlikGoruntu)) {
+        throw StateError(
+          'Alıcı veya veli ilişkisi değişti; ön izlemeyi yenileyin.',
+        );
+      }
+      secilen.add(k);
+    }
+    await _kaynakKisiKontrol(db, b, q.kaynakModul, q.kaynakKayit, secilen);
+    await _kontrol(db, b);
+  }
+}
+).hasMatch(imza) ||
+            kisiler.isEmpty || kisiler.any(
+              (k) => k.tur != MesajKisiTuru.ogretmen ||
+                  k.kisiId != kisiId,
+            )) {
+          throw StateError('Proje sonucundan yeni mesaj hazırlayın.');
+        }
+        final rehberlik = BireyselRehberlikService(modGetir: _mod);
+        final baglam = BireyselRehberlikBaglami(
+          okulId: b.okulId,
+          ogretmenProfilId: b.ogretmenId,
+          okulAdi: b.okulAdi,
+          ogretmenAdi: b.ogretmenAdi,
+          egitimOgretimYili: b.yil,
+        );
+        final paketler = <Map<String, dynamic>>[];
+        for (final dersId in dersler.cast<int>()) {
+          final paket = await rehberlik.projeSonucMesajiniDogrula(
+            db, baglam, atama, form, dersId,
+          );
+          if (!(paket['aliciIds'] as List).contains(kisiId) ||
+              kisiler.any((k) => k.sinifId != paket['sinifId'])) {
+            throw StateError(
+              'Proje sonucu veya ders öğretmeni değişti. Yeni mesaj hazırlayın.',
+            );
+          }
+          paketler.add(paket);
+        }
+        final guncelImza = sha256.convert(utf8.encode(jsonEncode([
+          for (var i = 0; i < dersler.length; i++)
+            [dersler[i], paketler[i]['imza']],
+        ]))).toString();
+        if (guncelImza != imza) {
+          throw StateError(
+            'Proje sonucu veya ders öğretmeni değişti. Yeni mesaj hazırlayın.',
+          );
+        }
+        return;
+      }
       if (parcalar.length != 4 ||
           parcalar.take(3).any((v) => int.tryParse(v) == null)) {
         throw StateError('Proje sonucundan yeni mesaj hazırlayın.');
