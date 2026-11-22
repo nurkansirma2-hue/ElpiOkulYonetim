@@ -494,7 +494,11 @@ void main() {
       expect((await s.projeAnalizi(b, 1, fid))['sonuclandi'], true);
       final paket = await s.projeSonucMesaji(b, 1, fid, 1);
       expect(paket['aliciIds'], [kisi]);
-      expect(paket['metin'], contains('101 - Öğrenci1'));
+      expect(paket['metin'], contains('101 – Öğrenci1'));
+      expect(paket['metin'],
+          contains('9/C Sınıfı Matematik dersinizden proje ödevi alan öğrenciler:'));
+      expect(paket['metin'],
+          contains('İyi çalışmalar.\nÖğretmen 9/C Sınıf Öğretmeni'));
       expect(paket['metin'], isNot(contains('Öğrenci2')));
       expect(paket['metin'], contains('9/C'));
       expect(
@@ -630,6 +634,14 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('bildirim-tumunu-sec')));
       await bekle();
       expect(find.text('Öğrenciye Mesaj At (3)'), findsOneWidget);
+      // Alt eylem kaydırılabilir ListView içinde değil, sabit çubuktadır.
+      expect(
+        find.ancestor(
+          of: find.text('Öğrenciye Mesaj At (3)'),
+          matching: find.byType(ListView),
+        ),
+        findsNothing,
+      );
       final hazirla = find.text('Öğrenciye Mesaj At (3)');
       await tester.ensureVisible(hazirla);
       await tester.tap(hazirla);
@@ -639,10 +651,17 @@ void main() {
       );
       expect(ekran.baslangicOgrenciIdleri, {1, 2, 3});
       expect(ekran.izinliOgrenciIdleri, {1, 2, 3});
-      expect(ekran.ogrenciMesajlari?[1], contains('proje ödevi'));
-      expect(ekran.ogrenciMesajlari?[1], contains('101'));
+      expect(ekran.ogrenciMesajlari?[1],
+          contains('Sevgili Öğrenci1 Uzun Soyadı,'));
+      expect(ekran.ogrenciMesajlari?[1],
+          contains('9/C Sınıfı Proje Ödevi'));
+      expect(ekran.ogrenciMesajlari?[1],
+          contains('Proje ödevi alacağın ders: Matematik'));
+      expect(ekran.ogrenciMesajlari?[1],
+          contains('Başarılar dilerim.\nÖğretmen\n9/C Sınıf Öğretmeni'));
       expect(ekran.ogrenciMesajlari?[1], isNot(contains('Öğrenci2')));
-      expect(ekran.ogrenciMesajlari?[2], contains('102'));
+      expect(ekran.ogrenciMesajlari?[2],
+          contains('Sevgili Öğrenci2 Uzun Soyadı,'));
       expect(ekran.gonderimOnizlemesiniAc, true);
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
@@ -734,6 +753,13 @@ void main() {
         await bekle();
       }
       expect(find.text('Öğretmene Mesaj At (2)'), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: find.text('Öğretmene Mesaj At (2)'),
+          matching: find.byType(ListView),
+        ),
+        findsNothing,
+      );
       // Öğretmeni eşleştirilmemiş ders yanlış alıcıya gönderilemez.
       final eksik = find.byKey(const ValueKey('bildirim-ders-3'));
       await tester.ensureVisible(eksik);
@@ -753,9 +779,14 @@ void main() {
       );
       expect(mesaj.kaynakKayit!.split(':').last, hasLength(64));
       expect(mesaj.baslangicKisiBaglari, {'Ogretmen:$kisi:1'});
-      expect(mesaj.baslangicMetni, contains('101 - Öğrenci1'));
-      expect(mesaj.baslangicMetni, contains('102 - Öğrenci2'));
-      expect(mesaj.baslangicMetni, isNot(contains('103 - Öğrenci3')));
+      expect(mesaj.baslangicMetni, contains('101 – Öğrenci1'));
+      expect(mesaj.baslangicMetni, contains('102 – Öğrenci2'));
+      expect(mesaj.baslangicMetni,
+          contains('9/C Sınıfı Matematik dersinizden proje ödevi alan öğrenciler:'));
+      expect(mesaj.baslangicMetni,
+          contains('9/C Sınıfı Fizik dersinizden proje ödevi alan öğrenciler:'));
+      expect('İyi çalışmalar.'.allMatches(mesaj.baslangicMetni!).length, 1);
+      expect(mesaj.baslangicMetni, isNot(contains('103 – Öğrenci3')));
       expect(mesaj.yalnizGonderimOnayi, true);
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
@@ -785,9 +816,9 @@ void main() {
         whatsappAc: (telefon, icerik) async {
           whatsappAcildi++;
           expect(telefon, isNotEmpty);
-          expect(icerik, contains('101 - Öğrenci1'));
-          expect(icerik, contains('102 - Öğrenci2'));
-          expect(icerik, isNot(contains('103 - Öğrenci3')));
+          expect(icerik, contains('101 – Öğrenci1'));
+          expect(icerik, contains('102 – Öğrenci2'));
+          expect(icerik, isNot(contains('103 – Öğrenci3')));
         },
       );
       final mb = await ms.hazirla();
@@ -2089,7 +2120,7 @@ void main() {
     expect(ekran.baslangicKisiBaglari, {
       'Ogretmen:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1',
     });
-    expect(ekran.baslangicMetni, contains('101 - Öğrenci1'));
+    expect(ekran.baslangicMetni, contains('101 – Öğrenci1'));
     expect(ekran.baslangicMetni, isNot(contains('Öğrenci2')));
     expect(ekran.yalnizGonderimOnayi, true);
     expect(tester.takeException(), isNull);
