@@ -935,6 +935,7 @@ class _MesajlasmaScreenState extends State<MesajlasmaScreen>
     required int istenen,
     required int belirsiz,
     required int atlanan,
+    required int baslatilamayan,
   }) async {
     if (!mounted) return;
     await showDialog<void>(
@@ -955,9 +956,8 @@ class _MesajlasmaScreenState extends State<MesajlasmaScreen>
                 Text('İstek kabul edildi: $istenen • '
                     'Sonucu belirsiz: $belirsiz • '
                     'Tekrar gönderilmedi: $atlanan'),
-                if (kayitlar.any((k) => k.durum == 'Gönderim başlatılamadı'))
-                  Text('Gönderimi başlatılamayan: '
-                      '${kayitlar.where((k) => k.durum == 'Gönderim başlatılamadı').length}'),
+                if (baslatilamayan > 0)
+                  Text('Gönderimi başlatılamayan: $baslatilamayan'),
                 const SizedBox(height: 10),
                 for (final kayit in kayitlar)
                   Padding(
@@ -1036,7 +1036,8 @@ class _MesajlasmaScreenState extends State<MesajlasmaScreen>
         await _projeSmsOzetiGoster([
           for (final ad in adlar)
             (ad: ad, durum: 'SMS isteği kabul edildi'),
-        ], istenen: 1, belirsiz: 0, atlanan: 0);
+        ], istenen: 1, belirsiz: 0, atlanan: 0,
+           baslatilamayan: 0);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1168,6 +1169,8 @@ class _MesajlasmaScreenState extends State<MesajlasmaScreen>
         istenen: sonuc['istenen'] ?? 0,
         belirsiz: sonuc['belirsiz'] ?? 0,
         atlanan: sonuc['atlanan'] ?? 0,
+        baslatilamayan:
+            guncel.alicilar.where((a) => a.smsDurumu == null).length,
       );
       return;
     }
