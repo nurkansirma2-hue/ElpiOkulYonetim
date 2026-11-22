@@ -708,7 +708,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(ValueKey('proje-form-$fid')), findsOneWidget);
     expect(find.text('Yanıtlar kapalı'), findsOneWidget);
-    await tester.tap(find.text('Proje').first);
+    await tester.tap(find.descendant(
+      of: find.byKey(ValueKey('proje-form-$fid')),
+      matching: find.byType(ListTile),
+    ).first);
     await tester.pumpAndSettle();
     expect(find.text('Bilgilendirme'), findsOneWidget);
   });
