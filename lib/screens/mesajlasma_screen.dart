@@ -930,23 +930,6 @@ class _MesajlasmaScreenState extends State<MesajlasmaScreen>
       widget.kaynakModul == 'RehberlikProjeSonuc' ||
       widget.kaynakModul == 'RehberlikProjeOgrenciSonuc';
 
-  // Aynı numaraya bağlı öğrenciler bir SMS isteğidir; listede her biri
-  // gösterilse de sayacı tekil telefon/kuyruk alıcısı üzerinden tutarız.
-  List<String> _projeSmsAliciAdlari(MesajAlicisi alici) {
-    if (widget.kaynakModul == 'RehberlikProjeSonuc') {
-      return [alici.ad];
-    }
-    final adlar = <String>{};
-    for (final ogrenci in jsonDecode(alici.ogrenciler) as List) {
-      final aciklama = '${ogrenci['aciklama'] ?? ''}';
-      final parcalar = aciklama.split(' • ');
-      adlar.add(parcalar.length >= 3
-          ? '${parcalar[1]} – ${parcalar.sublist(2).join(' • ')}'
-          : aciklama);
-    }
-    return adlar.where((ad) => ad.trim().isNotEmpty).toList();
-  }
-
   Future<void> _projeSmsOzetiGoster(
     List<({String ad, String durum})> kayitlar, {
     required int istenen,
@@ -972,6 +955,9 @@ class _MesajlasmaScreenState extends State<MesajlasmaScreen>
                 Text('İstek kabul edildi: $istenen • '
                     'Sonucu belirsiz: $belirsiz • '
                     'Tekrar gönderilmedi: $atlanan'),
+                if (kayitlar.any((k) => k.durum == 'Gönderim başlatılamadı'))
+                  Text('Gönderimi başlatılamayan: '
+                      '${kayitlar.where((k) => k.durum == 'Gönderim başlatılamadı').length}'),
                 const SizedBox(height: 10),
                 for (final kayit in kayitlar)
                   Padding(
@@ -1172,23 +1158,11 @@ class _MesajlasmaScreenState extends State<MesajlasmaScreen>
     if (_projeSmsBilgilendirmesi) {
       final guncel = await _service.kuyrukGetir(_baglam!, q.id);
       if (!mounted) return;
-      final oncekiDurumlar = {
-        for (final alici in q.alicilar) alici.id: alici.smsDurumu,
-      };
-      final kayitlar = <({String ad, String durum})>[];
-      for (final alici in guncel.alicilar) {
-        final onceki = oncekiDurumlar[alici.id];
-        final durum = onceki != null
-            ? 'Önceden işlendi, tekrar gönderilmedi'
-            : alici.smsDurumu == 'Istendi'
-                ? 'SMS isteği kabul edildi'
-                : alici.smsDurumu == 'Belirsiz'
-                    ? 'Sonucu belirsiz'
-                    : 'Gönderim başlatılamadı';
-        for (final ad in _projeSmsAliciAdlari(alici)) {
-          kayitlar.add((ad: ad, durum: durum));
-        }
-      }
+      final kayitlar = projeSmsOzetSatirlari(
+        onceki: q,
+        guncel: guncel,
+        ogretmen: widget.kaynakModul == 'RehberlikProjeSonuc',
+      );
       await _projeSmsOzetiGoster(
         kayitlar,
         istenen: sonuc['istenen'] ?? 0,
