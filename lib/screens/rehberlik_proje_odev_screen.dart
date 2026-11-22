@@ -3781,6 +3781,15 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               setState(() => bildirimGorunum = v.first),
         ),
         const SizedBox(height: 10),
+        _buton(
+          ogrenciModu
+              ? 'Öğrenciye Mesaj At (${secim.length})'
+              : 'Öğretmene Mesaj At (${secim.length})',
+          Icons.message_outlined,
+          _seciliBildirimMesajiniHazirla,
+          etkin: kesinSonucHazir && !salt && secim.isNotEmpty,
+        ),
+        const SizedBox(height: 10),
         if (!kesinSonucHazir)
           _bilgi(
             'Ders dağıtımı onaylandı. Kesin sonuç mesajları için '
@@ -3897,13 +3906,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                 : 'Öğretmeni eşleştirilmiş ders yok.',
             uyari: true,
           ),
-        const SizedBox(height: 8),
-        _buton(
-          'Mesaj Hazırla (${secim.length})',
-          Icons.message_outlined,
-          _seciliBildirimMesajiniHazirla,
-          etkin: kesinSonucHazir && !salt && secim.isNotEmpty,
-        ),
       ],
     );
   }
@@ -4457,7 +4459,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                 Icons.folder_outlined,
                 () => _export('pdf', arsiv: true),
               ),
-          ] else
+          ] else if (ekran != 7)
             _buton('Yenile', Icons.refresh, _yukle, ikincil: true),
         ]),
       ),
