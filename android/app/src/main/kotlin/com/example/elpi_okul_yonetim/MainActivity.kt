@@ -127,9 +127,14 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
     }
 
+    private fun smsIzinleriTamam(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) ==
+            PackageManager.PERMISSION_GRANTED &&
+        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) ==
+            PackageManager.PERMISSION_GRANTED
+
     private fun smsIzni(result: MethodChannel.Result) {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) ==
-            PackageManager.PERMISSION_GRANTED) {
+        if (smsIzinleriTamam()) {
             result.success(true)
             return
         }
@@ -137,8 +142,12 @@ class MainActivity : FlutterActivity() {
             result.error("SMS_IZIN_BEKLIYOR", "SMS izni isteği devam ediyor.", null)
             return
         }
+        val eksikler = listOf(Manifest.permission.SEND_SMS, Manifest.permission.READ_PHONE_STATE)
+            .filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
         bekleyenSmsIzni = result
-        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.SEND_SMS), SMS_IZIN_KODU)
+        ActivityCompat.requestPermissions(this, eksikler.toTypedArray(), SMS_IZIN_KODU)
     }
 
     override fun onRequestPermissionsResult(
@@ -146,25 +155,29 @@ class MainActivity : FlutterActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == SMS_IZIN_KODU) {
-            bekleyenSmsIzni?.success(grantResults.isNotEmpty() &&
-                grantResults[0] == PackageManager.PERMISSION_GRANTED)
+            // Android yanıtında izinlerin sırasına dayanma; gerçek durumu denetle.
+            bekleyenSmsIzni?.success(smsIzinleriTamam())
             bekleyenSmsIzni = null
         }
     }
 
     private fun smsGonder(call: MethodCall, result: MethodChannel.Result) {
         try {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) !=
-                PackageManager.PERMISSION_GRANTED) {
-                result.error("SMS_IZIN_YOK", "SMS gönderme izni verilmedi.", null)
+            if (!smsIzinleriTamam()) {
+                result.error("SMS_IZIN_YOK",
+                    "SMS ve Telefon izinlerini uygulama ayarlarından etkinleştirin.", null)
+                return
+            }
+            if (!packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_MESSAGING)) {
+                result.error("SMS_DESTEKLENMIYOR",
+                    "Bu cihaz SIM üzerinden SMS göndermeyi desteklemiyor.", null)
                 return
             }
             val telefon = call.argument<String>("telefon") ?: ""
             val metin = call.argument<String>("metin") ?: ""
             require(Regex("^[1-9][0-9]{7,14}$").matches(telefon) &&
                 metin.isNotBlank() && metin.length <= 4000) { "SMS alıcısı veya metni geçersiz." }
-            // Kullanıcının Android ayarlarında belirlediği varsayılan SMS SIM'i kullan.
-            // Aktif abonelik listesini okumak READ_PHONE_STATE gerektirebilir.
+            // Kullanıcının Android ayarlarında belirlediği varsayılan SMS SIM'ini kullan.
             val subscriptionId = SubscriptionManager.getDefaultSmsSubscriptionId()
             if (subscriptionId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
                 result.error("SMS_SIM_SECIMI",
@@ -175,11 +188,16 @@ class MainActivity : FlutterActivity() {
                 getSystemService(SmsManager::class.java).createForSubscriptionId(subscriptionId)
             else @Suppress("DEPRECATION") SmsManager.getSmsManagerForSubscriptionId(subscriptionId)
             val parts = sms.divideMessage(metin)
-            // Platform çağrısı yalnız gönderim isteğinin kabul edildiğini gösterir.
-            // Operatör gönderim/teslim doğrulaması bu aşamada mevcut değildir.
+            // İşlemin istenmesi teslim kanıtı değildir; hatada otomatik yeniden gönderme yok.
             if (parts.size == 1) sms.sendTextMessage(telefon, null, metin, null, null)
             else sms.sendMultipartTextMessage(telefon, null, parts, null, null)
             result.success(mapOf("durum" to "Istendi", "parca" to parts.size))
+        } catch (e: SecurityException) {
+            // Bazı cihazlarda SIM altyapısı ek korumalı telefon kimliği sorgulayabilir.
+            // İleti kısmen iletilmiş olabileceğinden otomatik yeniden gönderme yapma.
+            result.error("SMS_TELEFON_YETKISI",
+                "Android SIM bilgisine erişimi engelledi. SMS sonucunu telefondan kontrol edin.",
+                e.toString())
         } catch (e: Exception) {
             result.error("SMS_GONDERIM_HATASI", "SMS gönderim isteği başarısız.", e.toString())
         }
