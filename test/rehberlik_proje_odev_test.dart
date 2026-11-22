@@ -1980,29 +1980,18 @@ void main() {
     await bekle();
     expect((await s.projeAnalizi(b, 1, fid))['sonuclandi'], true);
     await capture('400-5-degerlendirme-sonuc');
-    // Kesin dağıtımın yeni Atama Listesi'nde görünmesi.
-    await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
+    // Kesin sonuç ve tek düğmeli ders bazlı bilgilendirme.
+    await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-4')));
     await bekle();
-    final atamaListesi = find.text('Atama Listesini Aç');
-    await tester.ensureVisible(atamaListesi);
-    await tester.tap(atamaListesi);
+    await tester.tap(find.text('Ders Bazlı'));
     await bekle();
-    expect(find.text('Proje seçimi sonuçlandırıldı • 3 öğrenci yerleştirildi.'),
-        findsOneWidget);
-    expect(find.textContaining('101 • Öğrenci1'), findsWidgets);
-    final tumMesajlar = find.text('Tüm Öğretmenlere Mesaj Hazırla');
-    await tester.ensureVisible(tumMesajlar);
-    await tester.tap(tumMesajlar);
+    final ders = find.byKey(const ValueKey('bildirim-ders-1'));
+    await tester.ensureVisible(ders);
+    await tester.tap(ders);
     await bekle();
-    expect(find.text('Öğretmen'), findsWidgets);
-    expect(find.text('Mesajı Düzenle / Gönderime Geç'), findsWidgets);
-    await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
-    await bekle();
-    final mesaj = find.widgetWithText(
-      FilledButton, 'Mesajı Düzenle / Gönderime Geç',
-    ).first;
+    expect(find.text('Mesaj Hazırla (1)'), findsOneWidget);
+    final mesaj = find.text('Mesaj Hazırla (1)');
     await tester.ensureVisible(mesaj);
-    await tester.pumpAndSettle();
     await tester.tap(mesaj);
     await bekle();
     expect(find.byType(MesajlasmaScreen), findsOneWidget);
@@ -2328,6 +2317,7 @@ void main() {
         (1, 'Yanıtlar'),
         (2, 'Onay / Düzenleme'),
         (3, 'Dağıtım / Yazdırma'),
+        (4, 'Bilgilendirme'),
       ]) {
         final sekme = find.byKey(ValueKey('proje-ust-sekme-$i'));
         await tester.ensureVisible(sekme);
@@ -2342,6 +2332,10 @@ void main() {
         }
         if (i == 3) {
           expect(find.text('Dağıtım Kriterleri'), findsOneWidget);
+        }
+        if (i == 4 && (await s.projeAnalizi(b, 1, fid))['yerlesen'] != 0) {
+          expect(find.text('Öğrenci Bazlı'), findsOneWidget);
+          expect(find.text('Ders Bazlı'), findsOneWidget);
         }
         await capture('${width.toInt()}-${i + 4}-$ad');
       }
