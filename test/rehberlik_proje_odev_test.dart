@@ -616,6 +616,15 @@ void main() {
       await bekle();
       expect(find.text('Öğrenci Bazlı'), findsOneWidget);
       expect(find.text('Ders Bazlı'), findsOneWidget);
+      expect(find.text('Mesaj Hazırla (0)'), findsOneWidget);
+      final tek = find.byKey(const ValueKey('bildirim-ogrenci-1'));
+      await tester.ensureVisible(tek);
+      await tester.tap(tek);
+      await bekle();
+      expect(find.text('Mesaj Hazırla (1)'), findsOneWidget);
+      await tester.tap(tek);
+      await bekle();
+      expect(find.text('Mesaj Hazırla (0)'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('bildirim-tumunu-sec')));
       await bekle();
       expect(find.text('Mesaj Hazırla (3)'), findsOneWidget);
@@ -723,6 +732,11 @@ void main() {
         await bekle();
       }
       expect(find.text('Mesaj Hazırla (2)'), findsOneWidget);
+      // Öğretmeni eşleştirilmemiş ders yanlış alıcıya gönderilemez.
+      final eksik = find.byKey(const ValueKey('bildirim-ders-3'));
+      await tester.ensureVisible(eksik);
+      expect(tester.widget<CheckboxListTile>(eksik).onChanged, isNull);
+      expect(find.byTooltip('Öğretmen Eşleştir'), findsOneWidget);
       final hazirla = find.text('Mesaj Hazırla (2)');
       await tester.ensureVisible(hazirla);
       await tester.tap(hazirla);
