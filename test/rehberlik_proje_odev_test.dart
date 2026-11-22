@@ -695,12 +695,22 @@ void main() {
     }
     await tester.pumpAndSettle();
     expect(find.text('Aktif Formlar'), findsOneWidget);
+    // Formlarım sadeleşirken durumlar, arşiv ve karttan ayrıntı korunur.
+    expect(find.text('Form veya ders ara'), findsNothing);
+    expect(find.text('Tercihleri Kontrol Et'), findsNothing);
+    expect(find.text('Bilgilendirme / Listeler'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Yanıtlar'), findsNothing);
+    expect(find.text('Yenile'), findsOneWidget);
+    expect(find.text('Form Talebi Oluştur'), findsOneWidget);
     expect(find.text('Arşiv'), findsOneWidget);
     expect(find.byKey(ValueKey('proje-form-$fid')), findsNothing);
     await tester.tap(find.text('Arşiv'));
     await tester.pumpAndSettle();
     expect(find.byKey(ValueKey('proje-form-$fid')), findsOneWidget);
     expect(find.text('Yanıtlar kapalı'), findsOneWidget);
+    await tester.tap(find.text('Proje').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Bilgilendirme'), findsOneWidget);
   });
 
   testWidgets(
