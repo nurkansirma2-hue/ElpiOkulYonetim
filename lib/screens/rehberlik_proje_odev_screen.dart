@@ -1731,7 +1731,9 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       ..sort((a, b) => (a['ad'] as String).compareTo(b['ad'] as String));
   }
 
-  Future<void> _ogretmenGrupMesaji(String kisiId) async {
+  Future<void> _ogretmenGrupMesaji(
+    String kisiId, {Set<int>? secilenDersler,
+  }) async {
     await _kontrol();
     if (!kesinSonucHazir) {
       throw StateError('Öğretmen mesajı için önce proje seçimini sonuçlandırın.');
@@ -1740,8 +1742,14 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     final grup = _ogretmenMesajGruplari.singleWhere(
       (g) => g['kisiId'] == kisiId,
     );
-    final dersIds = (grup['dersler'] as List<Map<String, dynamic>>)
-        .map((d) => d['dersId'] as int).toList()..sort();
+    final tumDersler = (grup['dersler'] as List<Map<String, dynamic>>)
+        .map((d) => d['dersId'] as int).toSet();
+    final dersIds = tumDersler
+        .where((d) => secilenDersler == null || secilenDersler.contains(d))
+        .toList()..sort();
+    if (dersIds.isEmpty) {
+      throw StateError('Öğretmene ait seçili bir ders bulunamadı.');
+    }
     // Her dersin alıcı ve sonuç imzası ayrı ayrı doğrulanır.
     Future<List<Map<String, dynamic>>> paketler() async {
       final sonuc = <Map<String, dynamic>>[];
@@ -3626,7 +3634,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     }
   }
 
-  Future<void> _ogrenciBildirimleriHazirla() async {
+  Future<void> _ogrenciBildirimleriHazirla({Set<int>? secilenler}) async {
     await _kontrol();
     if (!kesinSonucHazir) {
       throw StateError('Öğrenci bildirimi için proje seçimini sonuçlandırın.');
@@ -3635,13 +3643,15 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     final imza = analiz!['imza'] as String;
     final ogrenciSatirlari = (analiz!['ogrenciler'] as List)
         .cast<Map<String, dynamic>>()
-        .where((r) => r['dersId'] != null)
+        .where((r) => r['dersId'] != null &&
+            (secilenler == null || secilenler.contains(r['OgrenciId'])))
         .toList();
     final ogrenciIds = ogrenciSatirlari
         .map((r) => r['OgrenciId'] as int)
         .toSet();
-    if (ogrenciIds.isEmpty) {
-      throw StateError('Bildirilecek öğrenci bulunmuyor.');
+    if (ogrenciIds.isEmpty ||
+        (secilenler != null && !ogrenciIds.containsAll(secilenler))) {
+      throw StateError('Seçilen öğrenciler artık güncel atama listesinde bulunmuyor.');
     }
     final mesajlar = <int, String>{
       for (final r in ogrenciSatirlari)
@@ -3656,7 +3666,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       opaque: false,
       pageBuilder: (_, _, _) => MesajlasmaScreen(
         kaynakModul: 'RehberlikProjeOgrenciSonuc',
-        kaynakKayit: '$atama:$id:$imza',
+        kaynakKayit: '$atama:$id:ogrenci:$imza',
         baslangicOgrenciIdleri: ogrenciIds,
         izinliOgrenciIdleri: ogrenciIds,
         ogrenciMesajlari: mesajlar,
