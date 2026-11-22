@@ -95,6 +95,9 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
   String? hata, sonuc, link;
   bool busy = true, yeni = false, kontenjan = true, sadeceHata = false;
   int adim = 0, ekran = 0, sekme = 0;
+  int bildirimGorunum = 0; // 0: Öğrenci Bazlı, 1: Ders Bazlı
+  final bildirimOgrenciSecimi = <int>{};
+  final bildirimDersSecimi = <int>{};
   int? yerelForm;
   DateTime? sonGun;
   String istek = List.generate(
@@ -220,6 +223,18 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       );
       ogretmenler = await widget.service.projeDersOgretmenleri(b, atama);
       analiz = await widget.service.projeAnalizi(b, atama, formId);
+      bildirimOgrenciSecimi.retainAll(
+        (analiz!['ogrenciler'] as List)
+            .cast<Map<String, dynamic>>()
+            .where((r) => r['dersId'] != null)
+            .map((r) => r['OgrenciId'] as int),
+      );
+      bildirimDersSecimi.retainAll(
+        (analiz!['dersler'] as List)
+            .cast<Map<String, dynamic>>()
+            .where((r) => (r['yerlesen'] as int? ?? 0) > 0)
+            .map((r) => r['dersId'] as int),
+      );
       final guncelImzalar = {
         for (final r in tercihler.where((r) => r['onayli'] == true))
           '${r['OgrenciId']}': r['imza'],
@@ -500,6 +515,9 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     _formSeciminiKapat();
     _yanitSeciminiKapat();
     onaySecimi.clear();
+    bildirimOgrenciSecimi.clear();
+    bildirimDersSecimi.clear();
+    bildirimGorunum = 0;
     sekme = seciliSekme ?? 0;
     googleYanitAcik = null;
     proje = p;
@@ -2648,6 +2666,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     if (ekran == 0 || (ekran == 1 && sekme == 0)) return 0;
     if (ekran == 1 && sekme == 1) return 1;
     if (ekran == 2) return 2;
+    if (ekran == 7) return 4;
     return 3;
   }
 
@@ -2666,7 +2685,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       }
       return;
     }
-    ekran = 3;
+    ekran = secim == 4 ? 7 : 3;
     _yanitSeciminiKapat();
   }
 
@@ -2676,11 +2695,12 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       'Yanıtlar',
       'Onay / \nDüzenleme',
       'Dağıtım / \nYazdırma',
+      'Bilgilendirme',
     ];
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(children: [
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < 5; i++)
           Expanded(
             child: InkWell(
               key: ValueKey('proje-ust-sekme-$i'),
@@ -2695,7 +2715,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   border: Border.all(color: const Color(0xffa4b3c8)),
                   borderRadius: BorderRadius.horizontal(
                     left: i == 0 ? const Radius.circular(18) : Radius.zero,
-                    right: i == 3 ? const Radius.circular(18) : Radius.zero,
+                    right: i == 4 ? const Radius.circular(18) : Radius.zero,
                   ),
                 ),
                 child: Text(
@@ -2704,7 +2724,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                   textAlign: TextAlign.center,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 9.5,
                     height: 1.15,
                     color: const Color(0xff152951),
                     fontWeight: _ustSekme == i
@@ -3082,7 +3102,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
               title: const Text('Ders atamaları oluşturuldu'),
               subtitle: Text('${analiz!['yerlesen']} öğrenci yerleştirildi.'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => setState(() => ekran = 5),
+              onTap: () => setState(() => ekran = 7),
             ),
           ),
         for (final r in tercihler.where(
@@ -3575,14 +3595,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             _imzaCizelgesiniYazdir,
           ),
         ]),
-        _kart('Ders Bazlı Öğrenci Listesi', Icons.groups_outlined, [
-          _buton(
-            'Atama Listesini Aç',
-            Icons.list_alt,
-            () async { ekran = 5; },
-            ikincil: true,
-          ),
-        ]),
         if (!kesinSonucHazir)
           _kart('Proje Seçimini Sonuçlandır',
               Icons.check_circle_outline, [
@@ -3598,8 +3610,6 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
             ),
           ]),
       ],
-      const SizedBox(height: 12),
-      _bilgilendirme(),
     ],
   );
 
@@ -4036,9 +4046,9 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
                             ),
                             if (p['dagitimOnayli'] == true)
                               _buton(
-                                'Atama Listesi',
+                                'Bilgilendirme / Listeler',
                                 Icons.groups_outlined,
-                                () => _formAc(p, islem: 5),
+                                () => _formAc(p, islem: 7),
                                 ikincil: true,
                               ),
                           ]),
