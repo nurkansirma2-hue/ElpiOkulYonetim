@@ -541,29 +541,27 @@ void main() {
       await bekle();
       await tester.tap(find.text('Sınıfın proje dersleri'));
       await bekle();
-      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-4')));
       await bekle();
-      final atamaListesi = find.text('Atama Listesini Aç');
-      await tester.ensureVisible(atamaListesi);
-      await tester.tap(atamaListesi);
+      expect(find.textContaining('Kesin sonuç mesajları'), findsOneWidget);
+      final ilk = find.byKey(const ValueKey('bildirim-ogrenci-1'));
+      await tester.ensureVisible(ilk);
+      await tester.tap(ilk);
       await bekle();
-      expect(find.textContaining('Ders dağıtımı onaylandı • 3 öğrenci'), findsOneWidget);
-      expect(find.textContaining('101 • Öğrenci1'), findsWidgets);
-      final teacher = find.widgetWithText(
-        OutlinedButton, 'Öğretmene Mesaj Hazırla',
-      );
-      await tester.ensureVisible(teacher.first);
-      expect(tester.widget<OutlinedButton>(teacher.first).onPressed, isNull);
-      final tum = find.text('Tüm Öğretmenlere Mesaj Hazırla');
-      await tester.ensureVisible(tum);
-      await tester.tap(tum);
+      expect(find.text('Mesaj Hazırla (1)'), findsOneWidget);
+      final buton = find.widgetWithText(FilledButton, 'Mesaj Hazırla (1)');
+      await tester.ensureVisible(buton);
+      expect(tester.widget<FilledButton>(buton).onPressed, isNull);
+      await tester.tap(find.text('Ders Bazlı'));
       await bekle();
-      expect(find.textContaining('proje henüz sonuçlandırılmadı'), findsOneWidget);
-      final grup = find.widgetWithText(
-        FilledButton, 'Mesajı Düzenle / Gönderime Geç',
-      );
-      await tester.ensureVisible(grup.first);
-      expect(tester.widget<FilledButton>(grup.first).onPressed, isNull);
+      final ders1 = find.byKey(const ValueKey('bildirim-ders-1'));
+      await tester.ensureVisible(ders1);
+      await tester.tap(ders1);
+      await bekle();
+      expect(find.text('Mesaj Hazırla (1)'), findsOneWidget);
+      expect(tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Mesaj Hazırla (1)'),
+      ).onPressed, isNull);
       expect(find.byType(MesajlasmaScreen), findsNothing);
       expect((await s.projeTalepleri(b, 1)).single['dagitimOnayli'], true);
       expect((await s.projeTalepleri(b, 1)).single['sonuclandi'], false);
@@ -612,12 +610,16 @@ void main() {
       expect(find.byKey(const ValueKey('proje-ust-sekme-1')), findsOneWidget);
       expect(find.byKey(const ValueKey('proje-ust-sekme-2')), findsOneWidget);
       expect(find.byKey(const ValueKey('proje-ust-sekme-3')), findsOneWidget);
+      expect(find.byKey(const ValueKey('proje-ust-sekme-4')), findsOneWidget);
       expect(find.byTooltip('İşlem değiştir'), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-4')));
       await bekle();
-      expect(find.text('Öğrenci Bildirimi'), findsOneWidget);
-      expect(find.text('Ders Öğretmeni Bildirimi'), findsOneWidget);
-      final hazirla = find.text('Öğrenci Mesajını Hazırla').first;
+      expect(find.text('Öğrenci Bazlı'), findsOneWidget);
+      expect(find.text('Ders Bazlı'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('bildirim-tumunu-sec')));
+      await bekle();
+      expect(find.text('Mesaj Hazırla (3)'), findsOneWidget);
+      final hazirla = find.text('Mesaj Hazırla (3)');
       await tester.ensureVisible(hazirla);
       await tester.tap(hazirla);
       await bekle();
@@ -710,18 +712,18 @@ void main() {
       await bekle();
       await tester.tap(find.text('Sınıfın proje dersleri'));
       await bekle();
-      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-3')));
+      await tester.tap(find.byKey(const ValueKey('proje-ust-sekme-4')));
       await bekle();
-      final atamaListesi = find.text('Atama Listesini Aç');
-      await tester.ensureVisible(atamaListesi);
-      await tester.tap(atamaListesi);
+      await tester.tap(find.text('Ders Bazlı'));
       await bekle();
-      final ac = find.text('Tüm Öğretmenlere Mesaj Hazırla');
-      await tester.ensureVisible(ac);
-      await tester.tap(ac);
-      await bekle();
-      expect(find.text('2 ders • 2 öğrenci'), findsOneWidget);
-      final hazirla = find.text('Mesajı Düzenle / Gönderime Geç');
+      for (final id in [1, 2]) {
+        final kart = find.byKey(ValueKey('bildirim-ders-$id'));
+        await tester.ensureVisible(kart);
+        await tester.tap(kart);
+        await bekle();
+      }
+      expect(find.text('Mesaj Hazırla (2)'), findsOneWidget);
+      final hazirla = find.text('Mesaj Hazırla (2)');
       await tester.ensureVisible(hazirla);
       await tester.tap(hazirla);
       await bekle();
