@@ -1766,8 +1766,17 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       return sonuc;
     }
     final ilk = await paketler();
-    // Mesaj uzunluğu sınırı ortak mesajlaşma tarafından da denetlenir.
-    final metin = ilk.map((p) => p['metin'] as String).join('\n\n---\n\n');
+    // Aynı öğretmenin dersleri tek mesajda gider; kapanış ve imza
+    // her ders için yinelenmez.
+    final sinifKodu = '${widget.atama['SinifKodu']}'.replaceAll('-', '/');
+    final kapanis =
+        '\n\nİyi çalışmalar.\n${b.ogretmenAdi} $sinifKodu Sınıf Öğretmeni';
+    final metin = ilk.map((p) {
+      final dersMetni = p['metin'] as String;
+      return dersMetni.endsWith(kapanis)
+          ? dersMetni.substring(0, dersMetni.length - kapanis.length)
+          : dersMetni;
+    }).join('\n\n') + kapanis;
     // Tek derste eski doğrulanmış kayıt biçimini koru. Birden fazla
     // derste seçili derslerin imzalarından birleşik kapsam anahtarı üret.
     final kaynakKayit = dersIds.length == 1
