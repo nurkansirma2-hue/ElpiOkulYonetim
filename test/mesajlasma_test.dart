@@ -25,6 +25,25 @@ import 'support/windows_memory_database.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('Android SMS izinleri ve SIM güvenlik hatası koruması', () async {
+    final manifest = await File('android/app/src/main/AndroidManifest.xml')
+        .readAsString();
+    final activity = await File(
+      'android/app/src/main/kotlin/com/example/elpi_okul_yonetim/MainActivity.kt',
+    ).readAsString();
+    expect(manifest, contains('android.permission.SEND_SMS'));
+    expect(manifest, contains('android.permission.READ_PHONE_STATE'));
+    expect(activity, contains('private fun smsIzinleriTamam()'));
+    expect(activity, contains('Manifest.permission.SEND_SMS'));
+    expect(activity, contains('Manifest.permission.READ_PHONE_STATE'));
+    expect(activity, contains('eksikler.toTypedArray()'));
+    expect(activity, contains('bekleyenSmsIzni?.success(smsIzinleriTamam())'));
+    expect(activity, contains('SubscriptionManager.getDefaultSmsSubscriptionId()'));
+    expect(activity, contains('catch (e: SecurityException)'));
+    expect(activity, contains('SMS_TELEFON_YETKISI'));
+    expect(activity, contains('SMS_SIM_SECIMI'));
+  });
+
   test(
     'Telefon biçimleri aynı alıcıya dönüşür; hatalı/çoklu numara reddedilir',
     () {
