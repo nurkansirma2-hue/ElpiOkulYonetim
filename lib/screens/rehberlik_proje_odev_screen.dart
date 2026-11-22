@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1767,6 +1768,17 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
     final ilk = await paketler();
     // Mesaj uzunluğu sınırı ortak mesajlaşma tarafından da denetlenir.
     final metin = ilk.map((p) => p['metin'] as String).join('\n\n---\n\n');
+    // Tek derste eski doğrulanmış kayıt biçimini koru. Birden fazla
+    // derste seçili derslerin imzalarından birleşik kapsam anahtarı üret.
+    final kaynakKayit = dersIds.length == 1
+        ? '$atama:$id:${dersIds.single}:${ilk.single['imza']}'
+        : '$atama:$id:ogretmen:$kisiId:${dersIds.join(',')}:${sha256.convert(utf8.encode(jsonEncode([
+            for (var i = 0; i < dersIds.length; i++)
+              [dersIds[i], ilk[i]['imza']],
+          ])))}';
+    if (kaynakKayit.length > 200) {
+      throw StateError('Seçilen ders sayısı mesaj kaydı sınırını aşıyor.');
+    }
     if (metin.length > 4000) {
       throw StateError('Birleşik öğretmen mesajı çok uzun. Ders bazında gönderin.');
     }
@@ -1775,7 +1787,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       opaque: false,
       pageBuilder: (_, _, _) => MesajlasmaScreen(
         kaynakModul: 'RehberlikProjeSonuc',
-        kaynakKayit: '$atama:$id:ogretmen:$kisiId',
+        kaynakKayit: kaynakKayit,
         ogretmenSinifId: sinif,
         baslangicOgretmenIdleri: {kisiId},
         baslangicKisiBaglari: {'Ogretmen:$kisiId:$sinif'},
