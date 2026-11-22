@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 const odevBildirimArsivModulu = 'OdevBildirimArsiv';
 
 /// TR yerel numaraları 90 ile, diğer ülkeler +/00 ülke koduyla girilir.
@@ -231,4 +233,40 @@ class MesajKuyrugu {
 
   int get onaylanan => alicilar.where((a) => a.durum == 'Onaylandi').length;
   int get atlanan => alicilar.where((a) => a.durum == 'Atlandi').length;
+}
+
+/// Proje ödevi SMS işleminin kişi bazlı, teslimat iddiası taşımayan özeti.
+/// Sayaçlar kişi değil, tekil telefon/alıcı işlemidir.
+List<({String ad, String durum})> projeSmsOzetSatirlari({
+  required MesajKuyrugu onceki,
+  required MesajKuyrugu guncel,
+  required bool ogretmen,
+}) {
+  final eski = {for (final a in onceki.alicilar) a.id: a.smsDurumu};
+  final satirlar = <({String ad, String durum})>[];
+  for (final alici in guncel.alicilar) {
+    final durum = eski[alici.id] != null
+        ? 'Önceden işlendi, tekrar gönderilmedi'
+        : alici.smsDurumu == 'Istendi'
+            ? 'SMS isteği kabul edildi'
+            : alici.smsDurumu == 'Belirsiz'
+                ? 'Sonucu belirsiz'
+                : 'Gönderim başlatılamadı';
+    final adlar = <String>{};
+    if (ogretmen) {
+      adlar.add(alici.ad);
+    } else {
+      for (final ogrenci in jsonDecode(alici.ogrenciler) as List) {
+        final aciklama = '${ogrenci['aciklama'] ?? ''}';
+        final parcalar = aciklama.split(' • ');
+        adlar.add(parcalar.length >= 3
+            ? '${parcalar[1]} – ${parcalar.sublist(2).join(' • ')}'
+            : aciklama);
+      }
+    }
+    for (final ad in adlar.where((ad) => ad.trim().isNotEmpty)) {
+      satirlar.add((ad: ad, durum: durum));
+    }
+  }
+  return satirlar;
 }
