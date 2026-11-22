@@ -996,9 +996,12 @@ extension RehberlikProjeOdevIslemleri on BireyselRehberlikService {
       where: 'SinifSubeId=?',
       whereArgs: [a['SinifSubeId']],
     );
+    final sinifKodu = '${sinif.single['SinifKodu']}'.replaceAll('-', '/');
     final metin =
-        'Proje ödevi ders seçimi kesin sonuçları\n${b.okulAdi}\n${a['EgitimOgretimYili']} • ${sinif.single['SinifKodu']}\nDers: ${ders['dersAdi']}\n'
-        '${rows.map((r) => "${r['OkulNo']} - ${r['Ad']} ${r['Soyad']}").join('\n')}\nSınıf rehber öğretmeni: ${b.ogretmenAdi}';
+        '$sinifKodu Sınıfı ${ders['dersAdi']} dersinizden proje ödevi alan öğrenciler:\n\n'
+        '${rows.map((r) => "${r['OkulNo']} – ${r['Ad']} ${r['Soyad']}").join('\n')}\n\n'
+        'İyi çalışmalar.\n'
+        '${b.ogretmenAdi} $sinifKodu Sınıf Öğretmeni';
     if (metin.length > 4000) {
       throw StateError('Liste mesaj sınırını aşıyor. Ders raporunu kullanın.');
     }
