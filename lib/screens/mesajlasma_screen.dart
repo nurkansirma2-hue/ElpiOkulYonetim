@@ -405,12 +405,16 @@ class _MesajlasmaScreenState extends State<MesajlasmaScreen>
           _gecmis = true;
         }
       });
-      if (widget.gonderimOnizlemesiniAc &&
-          _yeniSecim &&
-          !_gecmis &&
-          _seciliKisiler.isNotEmpty) {
-        setState(() => _busy = false);
-        await _yeniOnayIcerigi();
+      if (widget.gonderimOnizlemesiniAc && !_gecmis) {
+        if (_yeniSecim && _seciliKisiler.isNotEmpty) {
+          setState(() => _busy = false);
+          await _yeniOnayIcerigi();
+        } else if (widget.ogrenciMesajlari != null && _secili.isNotEmpty) {
+          // Proje öğrencilerinde kişiye özel mesajlar hazır gelir.
+          // Öğretmen seçim ekranından farklı olarak öğrenci ön izlemesini aç.
+          setState(() => _busy = false);
+          await _onayIcerigi();
+        }
       }
       if (widget.eksikTelefonlariSor &&
           !_gecmis &&
