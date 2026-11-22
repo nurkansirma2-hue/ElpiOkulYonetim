@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -755,6 +756,71 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+  test(
+    'birleştirilmiş öğretmen mesajı WhatsApp açar; '
+    'değişen atama eski kuyruğu engeller',
+    () async {
+      const kisi = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+      await tamDagitim();
+      await ogretmenEkle(kisi, 1);
+      await s.projeDersOgretmeniEsle(b, 1, fid, 2, {kisi});
+      final an = await s.projeAnalizi(b, 1, fid);
+      await s.projeSonuclandir(b, 1, fid, an['imza'] as String);
+      final paket1 = await s.projeSonucMesaji(b, 1, fid, 1);
+      final paket2 = await s.projeSonucMesaji(b, 1, fid, 2);
+      final imza = sha256.convert(utf8.encode(jsonEncode([
+        [1, paket1['imza']],
+        [2, paket2['imza']],
+      ]))).toString();
+      final kaynak = '1:$fid:ogretmen:$kisi:1,2:$imza';
+      final metin = "${paket1['metin']}\n\n---\n\n${paket2['metin']}";
+      var whatsappAcildi = 0;
+      final ms = MesajlasmaService(
+        databaseGetir: () async => db,
+        whatsappAc: (telefon, icerik) async {
+          whatsappAcildi++;
+          expect(telefon, isNotEmpty);
+          expect(icerik, contains('101 - Öğrenci1'));
+          expect(icerik, contains('102 - Öğrenci2'));
+          expect(icerik, isNot(contains('103 - Öğrenci3')));
+        },
+      );
+      final mb = await ms.hazirla();
+      final adaylar = await ms.aliciAdaylari(mb, tur: MesajKisiTuru.ogretmen);
+      final secim = MesajKisiOnIzleme(
+        adaylar.where((k) => k.kisiId == kisi).toList(),
+      );
+      await expectLater(
+        ms.kisilerleKuyrukOlustur(
+          mb, secim, metin,
+          kaynakModul: 'RehberlikProjeSonuc',
+          kaynakKayit: '1:$fid:ogretmen:$kisi',
+        ),
+        throwsStateError,
+      );
+      final ilk = await ms.kisilerleKuyrukOlustur(
+        mb, secim, metin,
+        kaynakModul: 'RehberlikProjeSonuc',
+        kaynakKayit: kaynak,
+      );
+      await ms.aliciyiAc(mb, ilk.id, ilk.alicilar.single.id);
+      expect(whatsappAcildi, 1);
+      final bekleyen = await ms.kisilerleKuyrukOlustur(
+        mb, secim, metin,
+        kaynakModul: 'RehberlikProjeSonuc',
+        kaynakKayit: kaynak,
+      );
+      // Sonuç mesajı hazırlandıktan sonra ders öğretmeni değişirse eski
+      // kuyruğun gönderim aşamasına geçmesine izin verilmez.
+      await s.projeDersOgretmeniEsle(b, 1, fid, 2, {});
+      await expectLater(
+        ms.aliciyiAc(mb, bekleyen.id, bekleyen.alicilar.single.id),
+        throwsStateError,
+      );
+      expect(whatsappAcildi, 1);
+    },
+  );
+
   test('bekleyen öğretmen mesajı değişen sonuçta gönderilmez', () async {
     const kisi = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     await tamDagitim();
