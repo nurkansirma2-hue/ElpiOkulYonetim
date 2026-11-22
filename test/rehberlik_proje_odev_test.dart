@@ -747,6 +747,11 @@ void main() {
         find.byType(MesajlasmaScreen),
       );
       expect(mesaj.baslangicOgretmenIdleri, {kisi});
+      expect(
+        mesaj.kaynakKayit,
+        startsWith('1:$fid:ogretmen:$kisi:1,2:'),
+      );
+      expect(mesaj.kaynakKayit!.split(':').last, hasLength(64));
       expect(mesaj.baslangicKisiBaglari, {'Ogretmen:$kisi:1'});
       expect(mesaj.baslangicMetni, contains('101 - Öğrenci1'));
       expect(mesaj.baslangicMetni, contains('102 - Öğrenci2'));
