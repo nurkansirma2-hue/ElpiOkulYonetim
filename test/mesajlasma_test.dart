@@ -25,6 +25,77 @@ import 'support/windows_memory_database.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('Proje SMS özeti öğretmen istek/belirsiz/atlanan kayıtlarını ayırır', () {
+    MesajAlicisi alici(int id, String ad, String? sms) => MesajAlicisi({
+      'AliciId': id,
+      'Sira': id,
+      'Telefon': '905321112233',
+      'AliciAdi': ad,
+      'Ogrenciler': '[]',
+      'Durum': 'Bekliyor',
+      'SmsDurumu': sms,
+    });
+    MesajKuyrugu kuyruk(List<MesajAlicisi> alicilar) => MesajKuyrugu({
+      'KuyrukId': 'q',
+      'Metin': 'Mesaj',
+      'KaynakModul': 'RehberlikProjeSonuc',
+      'OlusturmaTarihi': '2026-11-22',
+    }, alicilar);
+    final onceki = kuyruk([
+      alici(1, 'Hülya Avan', null),
+      alici(2, 'Ahmet Yılmaz', null),
+      alici(3, 'Ayşe Demir', 'Istendi'),
+      alici(4, 'Fatma Kaya', null),
+    ]);
+    final guncel = kuyruk([
+      alici(1, 'Hülya Avan', 'Istendi'),
+      alici(2, 'Ahmet Yılmaz', 'Belirsiz'),
+      alici(3, 'Ayşe Demir', 'Istendi'),
+      alici(4, 'Fatma Kaya', null),
+    ]);
+    final satirlar = projeSmsOzetSatirlari(
+      onceki: onceki, guncel: guncel, ogretmen: true,
+    );
+    expect(satirlar, [
+      (ad: 'Hülya Avan', durum: 'SMS isteği kabul edildi'),
+      (ad: 'Ahmet Yılmaz', durum: 'Sonucu belirsiz'),
+      (ad: 'Ayşe Demir', durum: 'Önceden işlendi, tekrar gönderilmedi'),
+      (ad: 'Fatma Kaya', durum: 'Gönderim başlatılamadı'),
+    ]);
+  });
+
+  test('Aynı numaradaki iki öğrenci isimle listelenir; tek SMS sayılır', () {
+    MesajKuyrugu kuyruk(String? durum) => MesajKuyrugu({
+      'KuyrukId': 'ogr',
+      'Metin': 'Mesaj',
+      'KaynakModul': 'RehberlikProjeOgrenciSonuc',
+      'OlusturmaTarihi': '2026-11-22',
+    }, [
+      MesajAlicisi({
+        'AliciId': 1,
+        'Sira': 1,
+        'Telefon': '905321112233',
+        'AliciAdi': 'Veli',
+        'Ogrenciler': jsonEncode([
+          {'id': 1, 'aciklama': '9/C • 3155 • Yekta Bulurman'},
+          {'id': 2, 'aciklama': '9/C • 3158 • Emin Yusuf Yıldırım'},
+        ]),
+        'Durum': 'Bekliyor',
+        'SmsDurumu': durum,
+      }),
+    ]);
+    final onceki = kuyruk(null);
+    final guncel = kuyruk('Istendi');
+    final satirlar = projeSmsOzetSatirlari(
+      onceki: onceki, guncel: guncel, ogretmen: false,
+    );
+    expect(guncel.alicilar, hasLength(1));
+    expect(satirlar, [
+      (ad: '3155 – Yekta Bulurman', durum: 'SMS isteği kabul edildi'),
+      (ad: '3158 – Emin Yusuf Yıldırım', durum: 'SMS isteği kabul edildi'),
+    ]);
+  });
+
   test('Android SMS izinleri ve SIM güvenlik hatası koruması', () async {
     final manifest = await File('android/app/src/main/AndroidManifest.xml')
         .readAsString();
