@@ -926,6 +926,78 @@ class _MesajlasmaScreenState extends State<MesajlasmaScreen>
     await _gonderimiBaslat(confirm);
   }
 
+  bool get _projeSmsBilgilendirmesi =>
+      widget.kaynakModul == 'RehberlikProjeSonuc' ||
+      widget.kaynakModul == 'RehberlikProjeOgrenciSonuc';
+
+  // Aynı numaraya bağlı öğrenciler bir SMS isteğidir; listede her biri
+  // gösterilse de sayacı tekil telefon/kuyruk alıcısı üzerinden tutarız.
+  List<String> _projeSmsAliciAdlari(MesajAlicisi alici) {
+    if (widget.kaynakModul == 'RehberlikProjeSonuc') {
+      return [alici.ad];
+    }
+    final adlar = <String>{};
+    for (final ogrenci in jsonDecode(alici.ogrenciler) as List) {
+      final aciklama = '${ogrenci['aciklama'] ?? ''}';
+      final parcalar = aciklama.split(' • ');
+      adlar.add(parcalar.length >= 3
+          ? '${parcalar[1]} – ${parcalar.sublist(2).join(' • ')}'
+          : aciklama);
+    }
+    return adlar.where((ad) => ad.trim().isNotEmpty).toList();
+  }
+
+  Future<void> _projeSmsOzetiGoster(
+    List<({String ad, String durum})> kayitlar, {
+    required int istenen,
+    required int belirsiz,
+    required int atlanan,
+  }) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('SMS Gönderim Özeti'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.kaynakModul == 'RehberlikProjeSonuc'
+                    ? 'Öğretmenlere SMS gönderim durumu'
+                    : 'Öğrencilere SMS gönderim durumu'),
+                const SizedBox(height: 12),
+                Text('İstek kabul edildi: $istenen • '
+                    'Sonucu belirsiz: $belirsiz • '
+                    'Tekrar gönderilmedi: $atlanan'),
+                const SizedBox(height: 10),
+                for (final kayit in kayitlar)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text('${kayit.ad} — ${kayit.durum}'),
+                  ),
+                const SizedBox(height: 12),
+                const Text(
+                  'SMS isteğinin kabul edilmesi, mesajın karşı tarafa '
+                  'teslim edildiğini kanıtlamaz. Belirsiz kayıtları '
+                  'yeniden göndermeden önce telefonunuzdan kontrol edin.',
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Tamam'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<bool> _tekKisiyeGonder(
     _GonderimYolu yol,
     String text, {
@@ -970,15 +1042,26 @@ class _MesajlasmaScreenState extends State<MesajlasmaScreen>
       await _yenile();
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            yol == _GonderimYolu.sms
-                ? 'SMS gönderim isteği iletildi. Bu, teslim edildiği anlamına gelmez.'
-                : 'WhatsApp açıldı. Mesajı WhatsApp içinde gönderin.',
+      if (yol == _GonderimYolu.sms && _projeSmsBilgilendirmesi) {
+        final adlar = kisiler != null
+            ? kisiler.secilenler.map((k) => k.ad).toSet().toList()
+            : ogrenciler!.secilenler.map((o) =>
+                '${o.okulNo} – ${o.ad}').toSet().toList();
+        await _projeSmsOzetiGoster([
+          for (final ad in adlar)
+            (ad: ad, durum: 'SMS isteği kabul edildi'),
+        ], istenen: 1, belirsiz: 0, atlanan: 0);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              yol == _GonderimYolu.sms
+                  ? 'SMS gönderim isteği iletildi. Bu, teslim edildiği anlamına gelmez.'
+                  : 'WhatsApp açıldı. Mesajı WhatsApp içinde gönderin.',
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
     return true;
   }
@@ -1086,6 +1169,34 @@ class _MesajlasmaScreenState extends State<MesajlasmaScreen>
     if (onay != true || !mounted) return;
     final sonuc = await _service.smsTopluGonder(_baglam!, q.id);
     if (!mounted) return;
+    if (_projeSmsBilgilendirmesi) {
+      final guncel = await _service.kuyrukGetir(_baglam!, q.id);
+      if (!mounted) return;
+      final oncekiDurumlar = {
+        for (final alici in q.alicilar) alici.id: alici.smsDurumu,
+      };
+      final kayitlar = <({String ad, String durum})>[];
+      for (final alici in guncel.alicilar) {
+        final onceki = oncekiDurumlar[alici.id];
+        final durum = onceki != null
+            ? 'Önceden işlendi, tekrar gönderilmedi'
+            : alici.smsDurumu == 'Istendi'
+                ? 'SMS isteği kabul edildi'
+                : alici.smsDurumu == 'Belirsiz'
+                    ? 'Sonucu belirsiz'
+                    : 'Gönderim başlatılamadı';
+        for (final ad in _projeSmsAliciAdlari(alici)) {
+          kayitlar.add((ad: ad, durum: durum));
+        }
+      }
+      await _projeSmsOzetiGoster(
+        kayitlar,
+        istenen: sonuc['istenen'] ?? 0,
+        belirsiz: sonuc['belirsiz'] ?? 0,
+        atlanan: sonuc['atlanan'] ?? 0,
+      );
+      return;
+    }
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
