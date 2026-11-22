@@ -812,7 +812,9 @@ void main() {
       );
       // Sonuç mesajı hazırlandıktan sonra ders öğretmeni değişirse eski
       // kuyruğun gönderim aşamasına geçmesine izin verilmez.
-      await s.projeDersOgretmeniEsle(b, 1, fid, 2, {});
+      const digerOgretmen = 'cccccccccccccccccccccccccccccccc';
+      await ogretmenEkle(digerOgretmen, 2);
+      await s.projeDersOgretmeniEsle(b, 1, fid, 2, {digerOgretmen});
       await expectLater(
         ms.aliciyiAc(mb, bekleyen.id, bekleyen.alicilar.single.id),
         throwsStateError,
