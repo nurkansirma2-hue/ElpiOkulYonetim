@@ -249,13 +249,13 @@ void main() {
     await tikla(t,find.byType(DropdownButtonFormField<int>));
     await tikla(t,find.text('2. Veri Girişi').last);
     await tikla(t,find.descendant(of:panel,matching:find.byTooltip('Daralt')));
-    expect(find.text('Uygulama Ekle'),findsNothing);
-    expect(find.text('Adet (Katsayı)'),findsNothing);
+    expect(find.text('Kontrol Ekle'),findsNothing);
+    expect(find.text('Örnek Sayısı'),findsNothing);
     expect(find.text('Öğrenciler (3)'),findsOneWidget);
     await foto(t,'daraltilmis-ayarlar');
     await tikla(t,find.descendant(of:panel,matching:find.byTooltip('Genişlet')));
     await foto(t,'genisletilmis-ayarlar');
-    expect(find.text('Uygulama Ekle'),findsOneWidget);
+    expect(find.text('Kontrol Ekle'),findsOneWidget);
     expect(t.widget<DropdownButtonFormField<int>>(find.byType(DropdownButtonFormField<int>)).initialValue,uygulamalar[1]);
     expect(t.takeException(),isNull);
   });
@@ -576,7 +576,7 @@ void main() {
   });
   testWidgets('uygulama ekle ve ad düzenle, tekrar adı engelle', (t) async {
     await ac(t);
-    await tikla(t, find.text('Uygulama Ekle'));
+    await tikla(t, find.text('Kontrol Ekle'));
     await t.enterText(
       find.byKey(const ValueKey('uygulama-adi')),
       'Fonksiyonlar',
@@ -719,7 +719,7 @@ void main() {
   );
   Future<void> yonetimiAc(WidgetTester t) async {
     await tikla(t, find.byTooltip('Uygulama işlemleri'));
-    await tikla(t, find.text('Uygulama Yönetimi'));
+    await tikla(t, find.text('Kontrol Yönetimi'));
   }
 
   testWidgets('yönetim dışında uygulama silme ve durum değiştirme yok', (t) async {
@@ -789,7 +789,7 @@ void main() {
   testWidgets('pasifleştirme ve etkinleştirme geçmişi korur', (t) async {
     await ac(t);
     await tikla(t, find.byTooltip('Uygulama işlemleri'));
-    await tikla(t, find.text('Uygulama Yönetimi'));
+    await tikla(t, find.text('Kontrol Yönetimi'));
     await tikla(t, find.text('Pasifleştir').first);
     await tikla(t, find.text('Onayla'));
     expect(
@@ -798,7 +798,7 @@ void main() {
     );
     expect(await DersUygulamaIslemleri.gecmis(o, gid), hasLength(8));
     await tikla(t, find.byTooltip('Uygulama işlemleri'));
-    await tikla(t, find.text('Uygulama Yönetimi'));
+    await tikla(t, find.text('Kontrol Yönetimi'));
     await tikla(t, find.text('Aktifleştir'));
     await tikla(t, find.text('Onayla'));
     expect(

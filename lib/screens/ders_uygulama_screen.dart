@@ -281,7 +281,7 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, yenile) => AlertDialog(
-          title: Text(u == null ? 'Uygulama Ekle' : 'Uygulamayı düzenle'),
+          title: Text(u == null ? 'Kontrol Ekle' : 'Uygulamayı düzenle'),
           content: TextField(
             key: const ValueKey('uygulama-adi'),
             controller: ad,
@@ -403,7 +403,7 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
     }
   }
 
-  Future<void> _uygulamaYonetimi() => _panel('Uygulama Yönetimi', [
+  Future<void> _uygulamaYonetimi() => _panel('Kontrol Yönetimi', [
     if (_uygulamalar.isEmpty) const Text('Henüz uygulama yok.'),
     for (final u in _uygulamalar)
       Padding(
@@ -1512,7 +1512,7 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
             const SizedBox(width: 12),
             Flexible(
               child: Text(
-                'Adet (Katsayı)',
+                'Örnek Sayısı',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -1574,7 +1574,7 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
                 _miniDugme(
                   'Adet bilgisi',
                   Icons.info_outline,
-                  () => _panel('Adet (Katsayı)', [
+                  () => _panel('Örnek Sayısı', [
                     const Text(
                       'Puan = (Yapılan ÷ Adet) × 100. Kayıtlı sonuçlar kendi adedini korur. Adet değişikliği hemen kaydedilir.',
                     ),
@@ -1702,7 +1702,7 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
     builder: (ctx, c) {
       final buttons = [
         UygulamaEkleTanitim(key:const ValueKey('uygulama-ekle-tanitim'),enabled:_g?.aktif==true,child:_islemDugmesi(
-          'Uygulama Ekle',
+          'Kontrol Ekle',
           Icons.add,
           _islem || _g?.aktif != true ? null : () => _uygulamaDuzenle(),
           ana: true,
@@ -2130,7 +2130,7 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
                 if (_g?.aktif == true) ...[
                   const PopupMenuItem(
                     value: 'yonetim',
-                    child: Text('Uygulama Yönetimi'),
+                    child: Text('Kontrol Yönetimi'),
                   ),
                   const PopupMenuItem(
                     value: 'duzenle',
