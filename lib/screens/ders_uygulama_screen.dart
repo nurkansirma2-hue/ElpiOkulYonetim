@@ -2123,11 +2123,6 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
                     value: 'yeni',
                     child: Text('Yeni kontrol'),
                   ),
-                if (_yaz)
-                  const PopupMenuItem(
-                    value: 'sil',
-                    child: Text('Seçili kontrolü sil'),
-                  ),
                 const PopupMenuItem(
                   value: 'gecmis',
                   child: Text('Değerlendirme geçmişi'),

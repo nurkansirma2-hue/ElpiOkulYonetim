@@ -649,7 +649,7 @@ void main() {
     },
   );
   testWidgets(
-    'geçmiş tarih seçimi, bekleyen değişiklik onayı ve kontrol silme',
+    'geçmiş tarih seçimi, bekleyen değişiklik onayı ve menüde kayıtların korunması',
     (t) async {
       final k2 = await BireyselOdevKontrolService.kontrolOlustur(
         o,
@@ -657,6 +657,10 @@ void main() {
         kontrolTarihi: DateTime(2026, 11, 6),
       );
       await ac(t);
+      await tikla(t, find.descendant(
+        of: find.byKey(const ValueKey('uygulama-ayarlari')),
+        matching: find.byTooltip('Genişlet'),
+      ));
       await tikla(
         t,
         find.byKey(ValueKey('uygulama-sonuc-1-${uygulamalar.first}')),
@@ -678,15 +682,20 @@ void main() {
       await t.tapAt(const Offset(5, 5));
       await t.pumpAndSettle();
       await tikla(t, find.byTooltip('Uygulama işlemleri'));
-      await tikla(t, find.text('Seçili kontrolü sil'));
-      await tikla(t, find.widgetWithText(FilledButton, 'Kontrolü sil'));
+      expect(find.text('Seçili kontrolü sil'), findsNothing);
+      expect(
+        t.widgetList<PopupMenuItem<String>>(find.byType(PopupMenuItem<String>))
+            .map((item) => item.value),
+        ['bilgiler', 'rapor', 'yeni', 'gecmis', 'yonetim', 'duzenle'],
+      );
       expect(
         (await BireyselOdevKontrolService.kontroller(
           o,
           gid,
-        )).single.odevKontrolId,
-        k2,
+        )).map((k) => k.odevKontrolId),
+        [kid, k2],
       );
+      expect(await DersUygulamaIslemleri.gecmis(o, gid), hasLength(8));
       expect(await DersUygulamaIslemleri.uygulamalar(o, gid), hasLength(5));
       expect(t.takeException(), isNull);
     },
