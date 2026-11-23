@@ -1,3 +1,4 @@
+import '../widgets/odev_islem_menusu.dart';
 import '../widgets/ortak_ui.dart';
 import '../widgets/odev_ortak_alt_islemler.dart';
 import 'package:flutter/material.dart';
@@ -1669,8 +1670,8 @@ class _OdevKontrolDetayScreenState extends State<OdevKontrolDetayScreen> {
   }
 
   Widget _digerIslemler(bool yazilabilir, bool kontrolAktif) =>
-      PopupMenuButton<String>(
-        tooltip: 'Diğer işlemler',
+      OdevIslemMenusu(
+        enabled: !_bekle && !_islem,
         onSelected: (v) async {
           switch (v) {
             case 'bilgiler':
@@ -1699,37 +1700,30 @@ class _OdevKontrolDetayScreenState extends State<OdevKontrolDetayScreen> {
               await _pasiflestir();
           }
         },
-        itemBuilder: (_) => [
-          const PopupMenuItem(value: 'bilgiler', child: Text('Bilgiler')),
-          const PopupMenuItem(value: 'rapor', child: Text('Rapor / Excel’e aktar')),
+        islemler: [
+          const OdevMenuIslemi('bilgiler', 'Bilgiler', Icons.info_outline),
+          const OdevMenuIslemi('rapor', 'Rapor / Excel’e aktar', Icons.file_download_outlined),
           if (yazilabilir) ...[
-            const PopupMenuItem(value: 'duzenle', child: Text('Ödevi düzenle')),
-            const PopupMenuItem(value: 'yeni', child: Text('Yeni kontrol')),
+            const OdevMenuIslemi('duzenle', 'Ödevi düzenle', Icons.edit_outlined, ayrac: true),
+            const OdevMenuIslemi('yeni', 'Yeni kontrol', Icons.calendar_month_outlined),
             if (kontrolAktif)
-              const PopupMenuItem(
-                value: 'aciklama',
-                child: Text('Kontrol açıklaması'),
-              ),
+              const OdevMenuIslemi('aciklama', 'Kontrol açıklaması', Icons.chat_bubble_outline),
             if (_olcutluGorev && kontrolAktif) ...[
-              const PopupMenuItem(
-                value: 'olcut',
-                child: Text('Aşama ölçütleri'),
-              ),
-              const PopupMenuItem(value: 'puan', child: Text('Aşama puanları')),
+              const OdevMenuIslemi('olcut', 'Aşama ölçütleri', Icons.checklist),
+              const OdevMenuIslemi('puan', 'Aşama puanları', Icons.grade_outlined),
             ],
-            PopupMenuItem(
-              value: 'tamam',
-              child: Text(
-                _gorev?.tamamlandi == true
-                    ? 'Devam ediyor olarak işaretle'
-                    : 'Tamamlandı olarak işaretle',
-              ),
-            ),
-            const PopupMenuItem(value: 'pasif', child: Text('Ödevi pasifleştir')),
+            OdevMenuIslemi('ogrenciler', 'Öğrenci İşlemleri', Icons.groups_outlined,
+              ayrac: true, altIslemler: [
+                const OdevMenuIslemi('ogrenciEkle', 'Öğrenci Ekle', Icons.person_add_alt_1_outlined),
+                OdevMenuIslemi('ogrenciCikar', 'Öğrenci Çıkar', Icons.person_remove_outlined,
+                  enabled: _ogrenciler.isNotEmpty),
+              ]),
+            OdevMenuIslemi('tamam',
+              _gorev?.tamamlandi == true ? 'Devam ediyor olarak işaretle' : 'Tamamlandı olarak işaretle',
+              Icons.check_circle_outline, ayrac: true, basarili: true),
+            const OdevMenuIslemi('pasif', 'Ödevi pasifleştir', Icons.inventory_2_outlined, arsiv: true),
           ],
         ],
-        icon: const Icon(Icons.more_vert),
-      
       );
 
   Widget _altIslem(String ad, IconData ikon, VoidCallback? onTap, {
@@ -2065,6 +2059,7 @@ class _OdevKontrolDetayScreenState extends State<OdevKontrolDetayScreen> {
                   ],
                 ),
           bottomNavigationBar: OdevOrtakAltIslemler(
+            sadeceKaydet: true,
             ogrenciEkle: yazilabilir ? _ogrenciEkle : null,
             ogrenciCikar: yazilabilir && _ogrenciler.isNotEmpty
                 ? _ogrenciCikar : null,

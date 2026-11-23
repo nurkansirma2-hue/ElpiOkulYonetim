@@ -7,11 +7,13 @@ class OdevOrtakAltIslemler extends StatelessWidget {
     this.ogrenciEkle,
     this.ogrenciCikar,
     this.kaydet,
+    this.sadeceKaydet = false,
   });
 
   final VoidCallback? ogrenciEkle;
   final VoidCallback? ogrenciCikar;
   final VoidCallback? kaydet;
+  final bool sadeceKaydet;
 
   Widget _dugme(
     BuildContext context,
@@ -70,7 +72,23 @@ class OdevOrtakAltIslemler extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => SafeArea(
+  Widget build(BuildContext context) => sadeceKaydet ? SafeArea(
+    top: false,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: FilledButton.icon(
+        onPressed: kaydet,
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(48),
+          backgroundColor: Colors.green.shade700,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        icon: const Icon(Icons.save_outlined),
+        label: const Text('Kaydet'),
+      ),
+    ),
+  ) : SafeArea(
     top: false,
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
