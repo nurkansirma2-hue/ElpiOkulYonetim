@@ -90,6 +90,22 @@ void main() {
     u2 = await DersUygulamaIslemleri.uygulamaKaydet(o, gid, 'Veri Girişi');
   });
   tearDown(LocalDatabase.instance.close);
+  test('yarım adet yeniden okumada korunur ve sınır dışı adet reddedilir', () async {
+    await DersUygulamaIslemleri.adetKaydet(o, gid, u1, 5);
+    await DersUygulamaIslemleri.sonuclariKaydet(o, k1, [
+      UygulamaSonucGirdisi(1, u1, OdevKontrolDurumu.manuel,
+          notDegeri: 5, yapilan: 2.5, adet: 5),
+    ]);
+    final sonuc = (await DersUygulamaIslemleri.gecmis(o, gid, guncel: true)).single;
+    expect(sonuc.yapilan, 2.5);
+    expect(sonuc.adet, 5);
+    expect(sonuc.puan, 5);
+    await expectLater(DersUygulamaIslemleri.sonuclariKaydet(o, k1, [
+      UygulamaSonucGirdisi(1, u1, OdevKontrolDurumu.manuel,
+          notDegeri: 5, yapilan: -0.5, adet: 5),
+    ]), throwsException);
+    expect((await DersUygulamaIslemleri.gecmis(o, gid)).single.yapilan, 2.5);
+  });
   test('kayıtsız aktif ve pasif uygulama silinir; diğer veriler korunur', () async {
     final gorevler = await db.query('OdevTanim');
     final kontroller = await db.query('OdevKontrol');

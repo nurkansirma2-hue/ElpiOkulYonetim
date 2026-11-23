@@ -232,7 +232,8 @@ extension DersUygulamaIslemleri on BireyselOdevKontrolService {
           }
           if ((s.yapilan == null) != (s.adet == null) ||
               s.adet != null &&
-                  (s.adet! < 1 || s.yapilan! < 0 || s.yapilan! > s.adet!)) {
+                  (s.adet! < 1 || !s.yapilan!.isFinite ||
+                      s.yapilan! < 0 || s.yapilan! > s.adet!)) {
             throw ArgumentError(
               'Yapılan sayısı 0 ile adet arasında olmalıdır.',
             );

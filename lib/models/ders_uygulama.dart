@@ -26,7 +26,8 @@ class UygulamaSonucGirdisi {
   final int ogrenciId, uygulamaId;
   final OdevKontrolDurumu durum;
   final int? notDegeri;
-  final int? yapilan, adet;
+  final num? yapilan;
+  final int? adet;
   final String? aciklama;
 }
 
@@ -39,13 +40,14 @@ class UygulamaSonucu {
       durum = OdevKontrolDurumu.oku(r['Durum']),
       notDegeri = r['NotDegeri'] as int?,
       aciklama = r['Aciklama'] as String?,
-      yapilan = r['Yapilan'] as int?,
+      yapilan = r['Yapilan'] as num?,
       adet = r['Adet'] as int?;
   final int uygulamaId, ogrenciId, kontrolId;
   final DateTime tarih;
   final OdevKontrolDurumu durum;
   final int? notDegeri;
-  final int? yapilan, adet;
+  final num? yapilan;
+  final int? adet;
   final String? aciklama;
   double? get puan =>
       yapilan != null && adet != null && !durum.degerlendirmeDisi && !durum.bekliyor

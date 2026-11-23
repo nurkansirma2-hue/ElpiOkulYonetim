@@ -209,6 +209,23 @@ void main() {
     });
   }
 
+  testWidgets('yarım adet ekranda ve sayaç kaydında korunur', (t) async {
+    await DersUygulamaIslemleri.adetKaydet(o, gid, uygulamalar.first, 5);
+    await DersUygulamaIslemleri.sonuclariKaydet(o, kid, [
+      UygulamaSonucGirdisi(1, uygulamalar.first, OdevKontrolDurumu.manuel,
+          notDegeri: 5, yapilan: 2.5, adet: 5),
+    ]);
+    await ac(t, detaylar: false);
+    expect(find.text('2,5 / 5'), findsOneWidget);
+    await tikla(t, find.byTooltip('Merve Akyüz: yapılan artır'));
+    expect(find.text('3,5 / 5'), findsOneWidget);
+    await tikla(t, find.widgetWithText(OutlinedButton, 'Kaydet'));
+    final kayit = (await DersUygulamaIslemleri.gecmis(o, gid, guncel: true,
+        ogrenciId: 1)).firstWhere((s) => s.uygulamaId == uygulamalar.first);
+    expect(kayit.yapilan, 3.5);
+    expect(kayit.puan, 7);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('referans görünüm ve telefon yerleşimi', (t) async {
     expect((await BireyselOdevKontrolService.listeOzeti(o))[gid], {
       'toplam': 15,

@@ -1050,9 +1050,9 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
     }
   }
 
-  int _sayi(OdevOgrenci o, DersUygulamasi u) {
+  num _sayi(OdevOgrenci o, DersUygulamasi u) {
     final s = _deger(o.ogrenciId, u.id);
-    return s?.yapilan ?? ((s?.puan ?? 0) / 10 * u.adet).round();
+    return s?.yapilan ?? ((s?.puan ?? 0) / 10 * (s?.adet ?? u.adet));
   }
 
   void _sayac(OdevOgrenci o, DersUygulamasi u, int fark) {
@@ -1295,7 +1295,7 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
               border: Border.all(color: _cizgi, width: .7),
             ),
             child: Text(
-              '${u == null ? 0 : _sayi(o, u)} / $adet',
+              '${u == null ? '0' : _sayi(o, u).toStringAsFixed(_sayi(o, u) % 1 == 0 ? 0 : 1).replaceAll('.', ',')} / $adet',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
