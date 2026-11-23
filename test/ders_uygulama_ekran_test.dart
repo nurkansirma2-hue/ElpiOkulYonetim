@@ -691,10 +691,79 @@ void main() {
       expect(t.takeException(), isNull);
     },
   );
+  Future<void> yonetimiAc(WidgetTester t) async {
+    await tikla(t, find.byTooltip('Uygulama işlemleri'));
+    await tikla(t, find.text('Uygulama Yönetimi'));
+  }
+
+  testWidgets('yönetim dışında uygulama silme ve durum değiştirme yok', (t) async {
+    await ac(t);
+    void yonetimButonuYok() {
+      expect(find.text('Sil'), findsNothing);
+      expect(find.text('Pasifleştir'), findsNothing);
+      expect(find.text('Aktifleştir'), findsNothing);
+    }
+    yonetimButonuYok();
+    await tikla(t, find.descendant(
+      of: find.byKey(const ValueKey('uygulama-ayarlari')),
+      matching: find.byTooltip('Genişlet'),
+    ));
+    await tikla(t, find.text('Tüm Uygulamalar'));
+    yonetimButonuYok();
+    await t.tapAt(const Offset(5, 5));
+    await t.pumpAndSettle();
+    await yonetimiAc(t);
+    expect(find.text('Pasifleştir'), findsWidgets);
+    expect(find.text('Sil'), findsWidgets);
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets('silme iptali korur, onay kayıtsız uygulamayı siler', (t) async {
+    final id = await DersUygulamaIslemleri.uygulamaKaydet(o, gid, 'Kayıtsız');
+    await ac(t);
+    final sil = find.byKey(ValueKey('uygulama-sil-$id'));
+    await yonetimiAc(t);
+    await tikla(t, sil);
+    expect(find.text('Uygulamayı sil'), findsOneWidget);
+    await tikla(t, find.text('Vazgeç'));
+    expect(await DersUygulamaIslemleri.uygulamalar(o, gid), hasLength(6));
+    await yonetimiAc(t);
+    await tikla(t, sil);
+    await tikla(t, find.widgetWithText(FilledButton, 'Sil'));
+    expect(await DersUygulamaIslemleri.uygulamalar(o, gid), hasLength(5));
+    expect(await DersUygulamaIslemleri.gecmis(o, gid), hasLength(8));
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets('puanlı uygulamada onaydan sonra bile silme engellenir', (t) async {
+    final once = await db.query('OdevUygulamaSonuc');
+    await ac(t);
+    await yonetimiAc(t);
+    await tikla(t, find.byKey(ValueKey('uygulama-sil-${uygulamalar.first}')));
+    await tikla(t, find.widgetWithText(FilledButton, 'Sil'));
+    expect(find.textContaining('Kayıtları korumak'), findsOneWidget);
+    expect(await db.query('OdevUygulamaSonuc'), once);
+    expect(await DersUygulamaIslemleri.uygulamalar(o, gid), hasLength(5));
+    expect(t.takeException(), isNull);
+  });
+
+  for (final width in [320.0, 360.0, 390.0, 400.0, 420.0, 900.0]) {
+    testWidgets('yönetim $width px büyük yazıda iki işlem de erişilebilir', (t) async {
+      await ac(t, width: width, scale: 2, brightness: Brightness.dark);
+      await yonetimiAc(t);
+      final satir = find.byKey(ValueKey('uygulama-yonetim-${uygulamalar.first}'));
+      expect(find.descendant(of: satir, matching: find.text('Pasifleştir')), findsOneWidget);
+      expect(find.descendant(of: satir, matching: find.text('Sil')), findsOneWidget);
+      await tikla(t, find.byKey(ValueKey('uygulama-sil-${uygulamalar.first}')));
+      expect(find.text('Uygulamayı sil'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    });
+  }
+
   testWidgets('pasifleştirme ve etkinleştirme geçmişi korur', (t) async {
     await ac(t);
     await tikla(t, find.byTooltip('Uygulama işlemleri'));
-    await tikla(t, find.text('Uygulama yönetimi'));
+    await tikla(t, find.text('Uygulama Yönetimi'));
     await tikla(t, find.text('Pasifleştir').first);
     await tikla(t, find.text('Onayla'));
     expect(
@@ -703,8 +772,8 @@ void main() {
     );
     expect(await DersUygulamaIslemleri.gecmis(o, gid), hasLength(8));
     await tikla(t, find.byTooltip('Uygulama işlemleri'));
-    await tikla(t, find.text('Uygulama yönetimi'));
-    await tikla(t, find.text('Etkinleştir'));
+    await tikla(t, find.text('Uygulama Yönetimi'));
+    await tikla(t, find.text('Aktifleştir'));
     await tikla(t, find.text('Onayla'));
     expect(
       (await DersUygulamaIslemleri.uygulamalar(o, gid)).first.aktif,

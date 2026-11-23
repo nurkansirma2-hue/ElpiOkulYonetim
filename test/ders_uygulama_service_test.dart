@@ -90,6 +90,66 @@ void main() {
     u2 = await DersUygulamaIslemleri.uygulamaKaydet(o, gid, 'Veri Girişi');
   });
   tearDown(LocalDatabase.instance.close);
+  test('kayıtsız aktif ve pasif uygulama silinir; diğer veriler korunur', () async {
+    final gorevler = await db.query('OdevTanim');
+    final kontroller = await db.query('OdevKontrol');
+    final katilimcilar = await db.query('OdevOgrenci');
+    await DersUygulamaIslemleri.uygulamaSil(o, gid, u1);
+    await DersUygulamaIslemleri.uygulamaAktifligi(o, gid, u2, false);
+    await DersUygulamaIslemleri.uygulamaSil(o, gid, u2);
+    expect(await DersUygulamaIslemleri.uygulamalar(o, gid), isEmpty);
+    expect(await db.query('OdevTanim'), gorevler);
+    expect(await db.query('OdevKontrol'), kontroller);
+    expect(await db.query('OdevOgrenci'), katilimcilar);
+    expect(await db.rawQuery('PRAGMA foreign_key_check'), isEmpty);
+  });
+  for (final durum in [
+    OdevKontrolDurumu.yapti,
+    OdevKontrolDurumu.yapmadi,
+    OdevKontrolDurumu.kontrolEdilmedi,
+    OdevKontrolDurumu.gelmedi,
+  ]) {
+    test('${durum.name} kaydı eski kontrolde ve pasif uygulamada da silinmez', () async {
+      await DersUygulamaIslemleri.sonuclariKaydet(o, k1, [
+        UygulamaSonucGirdisi(1, u1, durum),
+      ]);
+      await BireyselOdevKontrolService.kontrolOlustur(
+        o, gid, kontrolTarihi: DateTime(2026, 11, 6),
+      );
+      final once = await db.query('OdevUygulamaSonuc');
+      for (final aktif in [true, false]) {
+        await DersUygulamaIslemleri.uygulamaAktifligi(o, gid, u1, aktif);
+        await expectLater(
+          DersUygulamaIslemleri.uygulamaSil(o, gid, u1),
+          throwsA(predicate((e) => '$e'.contains('pasifleştirin'))),
+        );
+        expect(await db.query('OdevUygulamaSonuc'), once);
+        expect(await DersUygulamaIslemleri.uygulamalar(o, gid), hasLength(2));
+      }
+      await DersUygulamaIslemleri.uygulamaAktifligi(o, gid, u1, true);
+      expect(await db.query('OdevUygulamaSonuc'), once);
+      expect(await db.rawQuery('PRAGMA foreign_key_check'), isEmpty);
+    });
+  }
+  test('silme yanlış görev, pasif görev, yıl ve kurumsal modu reddeder', () async {
+    final diger = await BireyselOdevKontrolService.gorevOlustur(
+      o, sinifSubeId: 1, dersId: 1,
+      gorevTuru: OdevGorevTuru.rutinKontrol, dersUygulamalari: true,
+      baslik: 'Diğer', baslangicTarihi: DateTime(2026, 9, 1),
+      ogrenciIdleri: [1],
+    );
+    await expectLater(DersUygulamaIslemleri.uygulamaSil(o, diger, u1), throwsException);
+    await expectLater(DersUygulamaIslemleri.uygulamaSil(o, gid, 99999), throwsException);
+    await db.update('OdevTanim', {'Aktif': 0}, where: 'OdevId=?', whereArgs: [gid]);
+    await expectLater(DersUygulamaIslemleri.uygulamaSil(o, gid, u1), throwsException);
+    await db.update('OdevTanim', {'Aktif': 1}, where: 'OdevId=?', whereArgs: [gid]);
+    await db.update('OgretmenProfil', {'EgitimOgretimYili': '2027-2028'});
+    await expectLater(DersUygulamaIslemleri.uygulamaSil(o, gid, u1), throwsException);
+    await db.update('OgretmenProfil', {'EgitimOgretimYili': '2026-2027'});
+    SharedPreferences.setMockInitialValues({'calisma_modu': 'okul'});
+    await expectLater(DersUygulamaIslemleri.uygulamaSil(o, gid, u1), throwsException);
+    expect(await db.query('OdevUygulama'), hasLength(2));
+  });
   test(
     'adet ve yapılan kalıcıdır, kesirli puan ve eski payda korunur',
     () async {

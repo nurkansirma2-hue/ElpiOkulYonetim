@@ -322,12 +322,12 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
   }
 
   Future<void> _aktifligiDegistir(DersUygulamasi u) async {
-    if (!await _vazgec() || !mounted) return;
+    if (_islem || _g?.aktif != true || !await _vazgec() || !mounted) return;
     final onay = await odevDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-          u.aktif ? 'Uygulamayı pasifleştir' : 'Uygulamayı etkinleştir',
+          u.aktif ? 'Uygulamayı pasifleştir' : 'Uygulamayı aktifleştir',
         ),
         content: Text(
           '${u.ad}: Geçmiş değerlendirmeler korunur. Yalnız aktif uygulamalar ortalamaya katılır.',
@@ -360,6 +360,96 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
       if (mounted) setState(() => _islem = false);
     }
   }
+
+  Future<void> _uygulamaSil(DersUygulamasi u) async {
+    if (_islem || _g?.aktif != true || !await _vazgec() || !mounted) return;
+    final onay = await odevDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Uygulamayı sil'),
+        content: Text(
+          '${u.ad} uygulaması kalıcı olarak silinsin mi? '
+          'Bu işlem geri alınamaz. Öğrenci puanı veya değerlendirme kaydı '
+          'bulunan uygulamalar silinemez; bunun yerine pasifleştirilebilir.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (onay != true || !mounted) return;
+    setState(() => _islem = true);
+    try {
+      await DersUygulamaIslemleri.uygulamaSil(
+        widget.oturum,
+        widget.odevId,
+        u.id,
+      );
+      if (mounted) {
+        await _yukle();
+        _mesaj('Uygulama silindi.');
+      }
+    } catch (e) {
+      _mesaj('$e');
+    } finally {
+      if (mounted) setState(() => _islem = false);
+    }
+  }
+
+  Future<void> _uygulamaYonetimi() => _panel('Uygulama Yönetimi', [
+    if (_uygulamalar.isEmpty) const Text('Henüz uygulama yok.'),
+    for (final u in _uygulamalar)
+      Padding(
+        key: ValueKey('uygulama-yonetim-${u.id}'),
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Tooltip(
+                message: u.ad,
+                child: Text(u.ad, maxLines: 2, overflow: TextOverflow.ellipsis),
+              ),
+              subtitle: Text(u.aktif ? 'Aktif' : 'Pasif'),
+            ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                TextButton(
+                  key: ValueKey('uygulama-aktiflik-${u.id}'),
+                  onPressed: _islem || _g?.aktif != true
+                      ? null
+                      : () {
+                          Navigator.pop(context);
+                          _aktifligiDegistir(u);
+                        },
+                  child: Text(u.aktif ? 'Pasifleştir' : 'Aktifleştir'),
+                ),
+                TextButton(
+                  key: ValueKey('uygulama-sil-${u.id}'),
+                  onPressed: _islem || _g?.aktif != true
+                      ? null
+                      : () {
+                          Navigator.pop(context);
+                          _uygulamaSil(u);
+                        },
+                  child: const Text('Sil'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+  ]);
 
   UygulamaSonucu? _deger(int oid, int uid) {
     final t = _taslak[(oid, uid)];
@@ -1911,21 +2001,8 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
         await _kontrolSil();
       case 'gecmis':
         await _gecmis();
-      case 'pasif':
-        await _panel('Uygulama yönetimi', [
-          for (final u in _uygulamalar)
-            ListTile(
-              title: Text(u.ad),
-              subtitle: Text(u.aktif ? 'Aktif' : 'Pasif'),
-              trailing: TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _aktifligiDegistir(u);
-                },
-                child: Text(u.aktif ? 'Pasifleştir' : 'Etkinleştir'),
-              ),
-            ),
-        ]);
+      case 'yonetim':
+        await _uygulamaYonetimi();
       case 'duzenle':
         if (await _vazgec() && mounted) {
           await Navigator.push(
@@ -2057,8 +2134,8 @@ class _DersUygulamaScreenState extends State<DersUygulamaScreen> {
                 ),
                 if (_g?.aktif == true) ...[
                   const PopupMenuItem(
-                    value: 'pasif',
-                    child: Text('Uygulama yönetimi'),
+                    value: 'yonetim',
+                    child: Text('Uygulama Yönetimi'),
                   ),
                   const PopupMenuItem(
                     value: 'duzenle',

@@ -128,6 +128,38 @@ extension DersUygulamaIslemleri on BireyselOdevKontrolService {
     },
   );
 
+  /// Puanı boş olsa da öğrenciye ait hiçbir değerlendirme kaydı silinmez.
+  static Future<void> uygulamaSil(
+    BireyselListeOturumu o,
+    int odevId,
+    int uygulamaId,
+  ) => BireyselOdevKontrolService._islem('Uygulama silinemedi.', o, (
+    db,
+  ) async {
+    await _gorev(db, o, odevId, yazma: true);
+    final sonuclar = await db.query(
+      'OdevUygulamaSonuc',
+      columns: ['UygulamaId'],
+      where: 'OdevId=? AND UygulamaId=?',
+      whereArgs: [odevId, uygulamaId],
+      limit: 1,
+    );
+    if (sonuclar.isNotEmpty) {
+      throw StateError(
+        'Öğrenci puanı veya değerlendirme kaydı bulunan uygulama silinemez. '
+        'Kayıtları korumak için uygulamayı pasifleştirin.',
+      );
+    }
+    if (await db.delete(
+          'OdevUygulama',
+          where: 'OdevId=? AND UygulamaId=?',
+          whereArgs: [odevId, uygulamaId],
+        ) !=
+        1) {
+      throw StateError('Uygulama bu ödeve ait değil veya bulunamadı.');
+    }
+  });
+
   static Future<List<DersUygulamasi>> uygulamalar(
     BireyselListeOturumu o,
     int odevId,
