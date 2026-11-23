@@ -1394,9 +1394,9 @@ class _OdevKontrolDetayScreenState extends State<OdevKontrolDetayScreen> {
     final onay = await odevDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Görev kaldırılsın mı?'),
+        title: const Text('Ödev pasifleştirilsin mi?'),
         content: const Text(
-          'Görev aktif listeden kaldırılacak. Geçmiş kontrol sonuçları silinmeyecek; görev, “Pasif görevleri göster” seçeneğiyle görüntülenebilecek.',
+          'Ödev pasifleştirilerek aktif listeden kaldırılacak. Öğrenciler, puanlar ve geçmiş kontrol sonuçları korunacak. Ödev, “Pasif görevleri göster” seçeneğiyle görüntülenebilecek.',
         ),
         actions: [
           TextButton(
@@ -1405,7 +1405,7 @@ class _OdevKontrolDetayScreenState extends State<OdevKontrolDetayScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Görevi Kaldır'),
+            child: const Text('Ödevi pasifleştir'),
           ),
         ],
       ),
@@ -1725,7 +1725,7 @@ class _OdevKontrolDetayScreenState extends State<OdevKontrolDetayScreen> {
                     : 'Tamamlandı olarak işaretle',
               ),
             ),
-            const PopupMenuItem(value: 'pasif', child: Text('Görevi kaldır')),
+            const PopupMenuItem(value: 'pasif', child: Text('Ödevi pasifleştir')),
           ],
         ],
         icon: const Icon(Icons.more_vert),
