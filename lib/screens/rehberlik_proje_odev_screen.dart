@@ -3688,6 +3688,7 @@ class _ProjeState extends State<RehberlikProjeOdevScreen> {
       opaque: false,
       pageBuilder: (_, _, _) => MesajlasmaScreen(
         kaynakModul: 'RehberlikProjeOgrenciSonuc',
+        ogrenciTelefonu: true,
         kaynakKayit: '$atama:$id:ogrenci:$imza',
         baslangicOgrenciIdleri: ogrenciIds,
         izinliOgrenciIdleri: ogrenciIds,
