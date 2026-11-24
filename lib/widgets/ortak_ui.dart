@@ -145,6 +145,7 @@ class OrtakSayfa extends StatelessWidget {
           appBar: baslik is ModulUstBar
               ? ModulUstBar(
                   title: baslik.title,
+                  baslikOncelikli: baslik.baslikOncelikli,
                   leading: baslik.leading,
                   centerTitle: baslik.centerTitle,
                   automaticallyImplyLeading: baslik.automaticallyImplyLeading,

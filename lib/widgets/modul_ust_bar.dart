@@ -65,6 +65,7 @@ class ModulUstBar extends StatelessWidget implements PreferredSizeWidget {
     this.flexibleSpace,
     this.kompakt = false,
     this.toolbarHeight,
+    this.baslikOncelikli = false,
   });
 
   final Widget? title, leading, flexibleSpace;
@@ -72,6 +73,7 @@ class ModulUstBar extends StatelessWidget implements PreferredSizeWidget {
   final bool? centerTitle;
   final bool automaticallyImplyLeading;
   final bool kompakt;
+  final bool baslikOncelikli;
   final double? toolbarHeight;
 
   @override
@@ -87,6 +89,27 @@ class ModulUstBar extends StatelessWidget implements PreferredSizeWidget {
     final renk = Theme.of(context).brightness == Brightness.dark
         ? Color.lerp(temelRenk, Colors.black, .55)!
         : temelRenk;
+    final baslikStili = Theme.of(context).textTheme.titleLarge?.copyWith(
+      fontSize: 16,
+      fontWeight: FontWeight.w700,
+      color: Colors.white,
+      letterSpacing: 0,
+    );
+    final baslikMetni = title is Text ? (title as Text).data ?? '' : '';
+    final baslikOlcusu = TextPainter(
+      text: TextSpan(text: baslikMetni, style: baslikStili),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final geriVar =
+        leading != null ||
+        (automaticallyImplyLeading &&
+            (Navigator.maybeOf(context)?.canPop() ?? false));
+    final bildirimMenuye =
+        baslikOncelikli &&
+        kompakt &&
+        baslikOlcusu.width >
+            MediaQuery.sizeOf(context).width - (geriVar ? 48 : 0) - 144 - 16;
     final genelIslemler = <Widget>[
       IconButton(
         tooltip: 'Ana Sayfa',
@@ -97,24 +120,31 @@ class ModulUstBar extends StatelessWidget implements PreferredSizeWidget {
             : () => moduldenAnaSayfayaDon(context),
         icon: const Icon(Icons.home_rounded),
       ),
-      IconButton(
-        tooltip: 'Bildirimler',
-        color: Colors.white,
-        disabledColor: Colors.white54,
-        onPressed: baglanti?.bildirimler,
-        icon: const Icon(Icons.notifications_outlined),
-      ),
+      if (!bildirimMenuye)
+        IconButton(
+          tooltip: 'Bildirimler',
+          color: Colors.white,
+          disabledColor: Colors.white54,
+          onPressed: baglanti?.bildirimler,
+          icon: const Icon(Icons.notifications_outlined),
+        ),
       PopupMenuButton<String>(
         tooltip: 'Diğer işlemler',
         iconColor: Colors.white,
         enabled: baglanti != null,
         onSelected: (secim) async {
+          if (secim == 'bildirimler') await baglanti?.bildirimler();
           if (secim == 'ayarlar') await baglanti?.ayarlar();
           if (secim == 'profil') await baglanti?.profil();
         },
-        itemBuilder: (_) => const [
-          PopupMenuItem(value: 'ayarlar', child: Text('Ayarlar')),
-          PopupMenuItem(value: 'profil', child: Text('Profilim')),
+        itemBuilder: (_) => [
+          if (bildirimMenuye)
+            const PopupMenuItem(
+              value: 'bildirimler',
+              child: Text('Bildirimler'),
+            ),
+          const PopupMenuItem(value: 'ayarlar', child: Text('Ayarlar')),
+          const PopupMenuItem(value: 'profil', child: Text('Profilim')),
         ],
       ),
     ];
@@ -122,10 +152,13 @@ class ModulUstBar extends StatelessWidget implements PreferredSizeWidget {
       title: title == null
           ? null
           : DefaultTextStyle.merge(
+              style: baslikOncelikli ? baslikStili : null,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               child: title!,
             ),
+      titleSpacing: baslikOncelikli ? 8 : null,
+      leadingWidth: baslikOncelikli && geriVar ? 48 : null,
       leading: leading,
       automaticallyImplyLeading: automaticallyImplyLeading,
       centerTitle: centerTitle ?? false,

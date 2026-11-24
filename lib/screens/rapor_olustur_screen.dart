@@ -38,8 +38,8 @@ class _OgrenciFormBolumBasligi extends StatelessWidget {
 }
 
 class RaporOlusturScreen extends StatefulWidget {
-  const RaporOlusturScreen({super.key, this.sekmeIcinde = false});
-  final bool sekmeIcinde;
+  const RaporOlusturScreen({super.key, this.sekmeIcinde = false, this.klavyeAcik = false});
+  final bool sekmeIcinde, klavyeAcik;
   @override
   State<RaporOlusturScreen> createState() => _BireyselListeEkraniState();
 }
@@ -58,6 +58,7 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
   String? _hata;
   int _bolum = 0, _surum = 0, _gorunum = 0;
   bool _artan = true;
+  bool get _klavyeAcik => widget.klavyeAcik || MediaQuery.viewInsetsOf(context).bottom > 0;
   Future<Uint8List>? _pdf;
   Timer? _onIzlemeZamani;
   Timer? _mudurKayitZamani;
@@ -488,7 +489,13 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
         if (_bolum == 1) IconButton(onPressed: _bekle ? null : _kaydet,
           tooltip: 'Şablonu kaydet', icon: const Icon(Icons.save_outlined)),
       ]),
-      bottomNavigationBar: SafeArea(
+      floatingActionButton: !_klavyeAcik && widget.sekmeIcinde && _bolum == 0 && !_bekle && _oturum != null && _oturum!.siniflar.isNotEmpty
+        ? FloatingActionButton(onPressed: _ogrenciEkle, tooltip: 'Öğrenci Ekle',
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            shape: CircleBorder(side: BorderSide(color: Theme.of(context).colorScheme.primary, width: 0)),
+            child: const Icon(Icons.add, size: 30)) : null,
+      bottomNavigationBar: widget.sekmeIcinde && _klavyeAcik ? null : SafeArea(
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
@@ -501,7 +508,7 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
               _altIslem(Icons.file_upload_outlined, 'Öğrenci Aktar', _bekle ? null : () => _importAc()),
               _altIslem(Icons.add_photo_alternate_outlined, 'Fotoğraf', _bekle ? null : () => _importAc(fotograf: true)),
             ],
-            _altIslem(Icons.delete_outline, 'Öğrenci Sil',
+            _altIslem(Icons.delete_outline, widget.sekmeIcinde ? 'Sil' : 'Öğrenci Sil',
               _bekle || _bolum != 0 || _ogrenciler.isEmpty ? null : _ogrenciSil,
               tehlikeli: true),
             if (widget.sekmeIcinde) _altIslem(Icons.badge_outlined, 'Detay', _bekle ? null : _seciliDetay),
@@ -513,7 +520,7 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
         top: false,
         child: Column(
           children: [
-            if (widget.sekmeIcinde) _araclar(),
+            if (widget.sekmeIcinde && !_klavyeAcik) _araclar(),
             Expanded(child: _icerik()),
           ],
         ),
@@ -540,34 +547,77 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
     if (mounted) await _hazirla(secimiKoru: true);
   }
 
-  Widget _araclar() {
-    final islemler = <(IconData, String, VoidCallback)>[
-      (Icons.groups_outlined, 'Öğrenci Listesi', () => _bolumSec(0)),
-      (Icons.badge_outlined, 'Detay Kartları', () { _bolumSec(0); setState(() => _gorunum = 1); }),
-      (Icons.person_add_outlined, 'Öğrenci Ekle', _ogrenciEkle),
-      (Icons.family_restroom, 'Veli Bilgileri', () => _veliAc()),
-      (Icons.table_view, 'İçe Aktar', () => _importAc()),
-      (Icons.picture_as_pdf_outlined, 'Dışa Aktar', () => _bolumSec(2)),
-      (Icons.bar_chart_outlined, 'Raporlar', () => _bolumSec(1)),
-    ];
-    return Padding(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-        for (final i in islemler) Padding(padding: const EdgeInsets.only(right: 4),
-          child: SizedBox(width: 76 * MediaQuery.textScalerOf(context).scale(11) / 11,
-            height: 92 * MediaQuery.textScalerOf(context).scale(11) / 11,
-            child: OutlinedButton(
-            onPressed: _bekle ? null : i.$3,
-            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8)),
-            child: Column(children: [Icon(i.$1, size: 26), const SizedBox(height: 6),
-              Text(i.$2.replaceAll(' ', '\n'), maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: Theme.of(context).textTheme.labelSmall)])))),
-        PopupMenuButton<String>(tooltip: 'Diğer öğrenci işlemleri',
-          onSelected: (v) { if (v == 'foto') { _importAc(fotograf: true); } else { _veliAc(excel: true); } },
-          itemBuilder: (_) => [
-            PopupMenuItem(value: 'foto', enabled: !_bekle, child: const Text('Fotoğraf aktar')),
-            PopupMenuItem(value: 'veli', enabled: !_bekle, child: const Text('Veli Excel İşlemleri')),
-          ]),
-      ])));
+  Future<void> _aktarimMenusu() async {
+    final secim = await showModalBottomSheet<String>(context: context, useSafeArea: true,
+      builder: (c) => Column(mainAxisSize: MainAxisSize.min, children: [
+        const Padding(padding: EdgeInsets.all(16), child: Text('İçe Aktar')),
+        ListTile(leading: const Icon(Icons.table_view), title: const Text('Öğrenci Excel dosyası'),
+          onTap: () => Navigator.pop(c, 'ogrenci')),
+        ListTile(leading: const Icon(Icons.add_photo_alternate_outlined), title: const Text('Fotoğraf aktar'),
+          onTap: () => Navigator.pop(c, 'foto')),
+        ListTile(leading: const Icon(Icons.family_restroom), title: const Text('Veli Excel İşlemleri'),
+          onTap: () => Navigator.pop(c, 'veli')),
+      ]));
+    if (!mounted || secim == null) return;
+    if (secim == 'veli') { await _veliAc(excel: true); }
+    else { await _importAc(fotograf: secim == 'foto'); }
   }
+
+  Widget _araclar() => LayoutBuilder(builder: (context, limits) {
+    final s = Theme.of(context).colorScheme;
+    final islemler = <(IconData, String, Color, VoidCallback)>[
+      (Icons.groups_rounded, 'Öğrenci Listesi', s.primary, () { _bolumSec(0); setState(() => _gorunum = 0); }),
+      (Icons.badge_outlined, 'Detay Kartları', s.primary, () { _bolumSec(0); setState(() => _gorunum = 1); }),
+      (Icons.person_add_alt_1_outlined, 'Öğrenci Ekle', s.primary, _ogrenciEkle),
+      (Icons.groups_rounded, 'Veli Bilgileri', Color.lerp(s.primary, Colors.cyan, .35)!, () => _veliAc()),
+      (Icons.table_view, 'İçe Aktar', Colors.green.shade700, _aktarimMenusu),
+      (Icons.picture_as_pdf_outlined, 'Dışa Aktar', Colors.red.shade700, () => _bolumSec(2)),
+      (Icons.bar_chart_rounded, 'Raporlar', Colors.deepPurple.shade400, () => _bolumSec(1)),
+    ];
+    final stil = Theme.of(context).textTheme.labelSmall!.copyWith(
+      fontSize: limits.maxWidth < 380 ? 9 : limits.maxWidth < 430 ? 10 : 10.5, height: 1.22,
+      fontWeight: FontWeight.w600, letterSpacing: -.2);
+    final scaler = MediaQuery.textScalerOf(context);
+    double kelimeGenisligi(String ad) => ad.split(' ').map((kelime) => (TextPainter(
+      text: TextSpan(text: kelime, style: stil), textDirection: Directionality.of(context),
+      textScaler: scaler)..layout()).width).reduce((a, b) => a > b ? a : b);
+    final enUzun = islemler.map((i) => kelimeGenisligi(i.$2)).reduce((a, b) => a > b ? a : b);
+    final minGenislik = (enUzun + 6).clamp(48.0, double.infinity);
+    final genislik = ((limits.maxWidth - 12 - 6) / 7).clamp(minGenislik, double.infinity);
+    final satir = TextPainter(text: TextSpan(text: 'Öğrenci', style: stil),
+      textDirection: Directionality.of(context), textScaler: scaler)..layout();
+    final yukseklik = (24 + 6 + satir.preferredLineHeight * 2 + 18).clamp(76.0, double.infinity);
+    return SingleChildScrollView(key: const ValueKey('ogrenci-araclari'), scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      child: Row(children: [for (var index = 0; index < islemler.length; index++)
+        Padding(padding: EdgeInsets.only(right: index == 6 ? 0 : 1), child: Builder(builder: (c) {
+          final i = islemler[index];
+          final secili = index == 0 && _bolum == 0 && _gorunum == 0 ||
+              index == 1 && _bolum == 0 && _gorunum == 1 || index == 5 && _bolum == 2 || index == 6 && _bolum == 1;
+          return Tooltip(message: i.$2, child: Semantics(button: true, selected: secili,
+            child: Container(width: genislik, height: yukseklik,
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(10),
+                gradient: secili ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+                  colors: [Color.lerp(s.primary, Colors.cyan, .3)!, s.primary]) : null,
+                color: secili ? null : s.surface,
+                border: Border.all(color: secili ? s.primary : s.outlineVariant.withValues(alpha: .65)),
+                boxShadow: [BoxShadow(color: s.shadow.withValues(alpha: .08), blurRadius: 3, offset: const Offset(0, 2))]),
+              child: Material(color: Colors.transparent, child: InkWell(
+                key: ValueKey('ogrenci-arac-$index'), borderRadius: BorderRadius.circular(10),
+                onTap: _bekle ? null : i.$4,
+                child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(i.$1, size: 24, color: secili ? s.onPrimary : i.$3),
+                    const SizedBox(height: 6),
+                    Column(mainAxisSize: MainAxisSize.min, children: [for (final kelime in i.$2.split(' '))
+                      Text(kelime, maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center, style: stil.copyWith(color: secili ? s.onPrimary : s.onSurface))]),
+                  ])),
+              )),
+            )));
+        })),
+      ]));
+  });
 
   void _ogrenciSil() {
     if (_bekle || _bolum != 0 || _ogrenciler.isEmpty) return;
@@ -601,9 +651,8 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon, size: 22),
             const SizedBox(height: 4),
-            Text(etiket, maxLines: 1, softWrap: false,
-              textAlign: TextAlign.center, overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall),
+            OrtakBaslik(etiket, maxLines: 2, textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontSize: 10, letterSpacing: 0, fontWeight: FontWeight.w600)),
           ]),
         ),
       ),
@@ -615,29 +664,59 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
   Widget _sinifFiltreleri() {
     final seviye = _sinif == null ? 0 : _sinifSeviyesi(_sinif!.sinif);
     final seviyeler = _oturum!.siniflar.map((s) => _sinifSeviyesi(s.sinif)).toSet().toList()..sort();
-    return Padding(padding: const EdgeInsets.all(12), child: LayoutBuilder(builder: (c, limits) {
-      final alanlar = <Widget>[
-        DropdownButtonFormField<int>(key: ValueKey('liste-seviye:$seviye'), initialValue: seviye,
-          isExpanded: true, decoration: const InputDecoration(labelText: 'Sınıf'),
-          items: [const DropdownMenuItem(value: 0, child: Text('Tüm Sınıflar', maxLines: 1, overflow: TextOverflow.ellipsis)),
-            for (final n in seviyeler) DropdownMenuItem(value: n, child: Text('$n. Sınıf'))],
-          onChanged: (n) => _sinifSec(n == null || n == 0 ? 0 : _oturum!.siniflar.firstWhere((s) => _sinifSeviyesi(s.sinif) == n).sinifSubeId)),
-        DropdownButtonFormField<int>(key: ValueKey('liste-sube:${_sinif?.sinifSubeId}'),
-          initialValue: _sinif?.sinifSubeId ?? 0, isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Şube'),
-          items: [const DropdownMenuItem(value: 0, child: Text('Tümü')),
-            for (final s in _oturum!.siniflar.where((s) => seviye == 0 || _sinifSeviyesi(s.sinif) == seviye))
-              DropdownMenuItem(value: s.sinifSubeId, child: Text(s.sinif, maxLines: 1, overflow: TextOverflow.ellipsis))],
-          onChanged: _sinifSec),
-        const InputDecorator(decoration: InputDecoration(labelText: 'Durum'), child: Text('Aktif')),
-      ];
-      if (limits.maxWidth < 350 || MediaQuery.textScalerOf(c).scale(14) > 20) {
-        return Wrap(spacing: 8, runSpacing: 8, children: [for (final w in alanlar)
-          SizedBox(width: limits.maxWidth, child: w)]);
+    final stil = Theme.of(context).textTheme.bodyMedium!.copyWith(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0);
+    Widget alan(String etiket, Widget child) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(padding: const EdgeInsets.only(left: 4, bottom: 4), child: Text(etiket,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 12, letterSpacing: 0))),
+      child,
+    ]);
+    InputDecoration dekor() => const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9), constraints: BoxConstraints(minHeight: 44));
+    return Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 4), child: LayoutBuilder(builder: (c, limits) {
+      final sinif = alan('Sınıf', DropdownButtonFormField<int>(key: ValueKey('liste-seviye:$seviye'),
+        initialValue: seviye, isExpanded: true, style: stil, iconSize: 18, decoration: dekor(),
+        items: [const DropdownMenuItem(value: 0, child: Text('Tüm Sınıflar', maxLines: 1, overflow: TextOverflow.ellipsis)),
+          for (final n in seviyeler) DropdownMenuItem(value: n, child: Text('$n. Sınıf'))],
+        onChanged: (n) => _sinifSec(n == null || n == 0 ? 0 : _oturum!.siniflar.firstWhere((s) => _sinifSeviyesi(s.sinif) == n).sinifSubeId)));
+      final sube = alan('Şube', DropdownButtonFormField<int>(key: ValueKey('liste-sube:${_sinif?.sinifSubeId}'),
+        initialValue: _sinif?.sinifSubeId ?? 0, isExpanded: true, style: stil, iconSize: 18, decoration: dekor(),
+        items: [const DropdownMenuItem(value: 0, child: Text('Tümü')),
+          for (final s in _oturum!.siniflar.where((s) => seviye == 0 || _sinifSeviyesi(s.sinif) == seviye))
+            DropdownMenuItem(value: s.sinifSubeId, child: Text(s.sinif, maxLines: 1, overflow: TextOverflow.ellipsis))],
+        onChanged: _sinifSec));
+      final durum = alan('Durum', InputDecorator(decoration: dekor(), child: Text('Aktif', style: stil)));
+      final gerekli = (TextPainter(text: TextSpan(text: 'Tüm Sınıflar', style: stil),
+        textDirection: Directionality.of(c), textScaler: MediaQuery.textScalerOf(c))..layout()).width + 42;
+      if (gerekli > (limits.maxWidth - 16) * .44) {
+        return Column(children: [sinif, const SizedBox(height: 8),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: sube), const SizedBox(width: 8), Expanded(child: durum)])]);
       }
-      return Row(children: [Expanded(flex: 3, child: alanlar[0]), const SizedBox(width: 8),
-        Expanded(flex: 2, child: alanlar[1]), const SizedBox(width: 8), Expanded(flex: 2, child: alanlar[2])]);
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(flex: 44, child: sinif), const SizedBox(width: 8),
+        Expanded(flex: 30, child: sube), const SizedBox(width: 8), Expanded(flex: 26, child: durum)]);
     }));
+  }
+
+  Widget _gorunumSecimi() {
+    final s = Theme.of(context).colorScheme;
+    return Container(key: const ValueKey('ogrenci-gorunumleri'),
+      decoration: BoxDecoration(color: s.surface, borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: s.outlineVariant)),
+      child: Row(children: [for (var i = 0; i < 3; i++)
+        Expanded(child: Semantics(selected: _gorunum == i, button: true, child: Material(color: Colors.transparent,
+          child: InkWell(key: ValueKey('ogrenci-gorunum-$i'), borderRadius: BorderRadius.circular(24),
+            onTap: () => setState(() => _gorunum = i),
+            child: Ink(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(24),
+                gradient: _gorunum == i ? LinearGradient(colors: [Color.lerp(s.primary, Colors.cyan, .35)!, s.primary]) : null),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon([Icons.format_list_bulleted, Icons.grid_view_outlined, Icons.table_chart_outlined][i], size: 18,
+                  color: _gorunum == i ? s.onPrimary : s.onSurfaceVariant),
+                const SizedBox(width: 6), Flexible(child: Text(['Liste', 'Kart', 'Tablo'][i], maxLines: 1,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, letterSpacing: 0,
+                    fontWeight: _gorunum == i ? FontWeight.w700 : FontWeight.w500, color: _gorunum == i ? s.onPrimary : s.onSurface))),
+              ])),
+          )))),
+      ]));
   }
 
   Widget _icerik() => _bekle ? const Center(child: CircularProgressIndicator()) : _hata != null
@@ -668,6 +747,24 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
                   ? Row(children: [SizedBox(width: 420, child: _tasarimAlani()),
                       Expanded(child: _onIzleme())]) : _tasarimAlani()) : _onIzleme()),
             ]);
+  Widget _listeOzeti(int adet) => LayoutBuilder(builder: (context, limits) {
+    final stil = Theme.of(context).textTheme.titleMedium!.copyWith(
+      fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -.4);
+    final siraStili = Theme.of(context).textTheme.bodySmall!.copyWith(fontSize: 11, letterSpacing: 0);
+    final sayac = Text('$adet öğrenci', maxLines: 1, style: stil);
+    final siralama = TextButton(onPressed: () => setState(() => _artan = !_artan),
+      style: TextButton.styleFrom(minimumSize: const Size(48, 36), padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [Text('Sırala: Ad Soyad', style: siraStili),
+        const SizedBox(width: 4), Icon(_artan ? Icons.arrow_upward : Icons.arrow_downward, size: 14)]));
+    double olc(String metin, TextStyle style) => (TextPainter(text: TextSpan(text: metin, style: style),
+      textDirection: Directionality.of(context), textScaler: MediaQuery.textScalerOf(context))..layout()).width;
+    if (olc('$adet öğrenci', stil) + olc('Sırala: Ad Soyad', siraStili) + 30 > limits.maxWidth) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [sayac, Align(alignment: Alignment.centerRight, child: siralama)]);
+    }
+    return Row(children: [Expanded(child: sayac), siralama]);
+  });
+
   Widget _liste() {
     final filtre = _ogrenciArama.trim().toLowerCase();
     final gorunenler = _ogrenciler.where((o) => filtre.isEmpty ||
@@ -677,20 +774,20 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
       return _artan ? n : -n;
     });
     return CustomScrollView(slivers: [
-      SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(8), child: Column(
+      SliverToBoxAdapter(child: Padding(padding: EdgeInsets.fromLTRB(8, 8, 8, widget.sekmeIcinde ? 2 : 8), child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (widget.sekmeIcinde) Wrap(spacing: 8, children: [
-            for (var i = 0; i < 3; i++) ChoiceChip(label: Text(['Liste', 'Kart', 'Tablo'][i]),
-              selected: _gorunum == i, onSelected: (_) => setState(() => _gorunum = i)),
-            TextButton.icon(onPressed: () => setState(() => _artan = !_artan),
-              icon: Icon(_artan ? Icons.arrow_upward : Icons.arrow_downward), label: const Text('Ad Soyad')),
-          ]),
-          Text('${gorunenler.length} öğrenci', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          TextField(decoration: const InputDecoration(prefixIcon: Icon(Icons.search),
-            hintText: 'Ad, soyad veya okul no ara'), onChanged: (v) => setState(() => _ogrenciArama = v)),
-          const SizedBox(height: 8),
-          FilledButton.icon(onPressed: _ogrenciler.isEmpty ? null : () => _bolumSec(1),
+          if (widget.sekmeIcinde) ...[
+            _gorunumSecimi(), const SizedBox(height: 10),
+            _listeOzeti(gorunenler.length),
+          ] else Text('${gorunenler.length} öğrenci', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          TextField(style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 13, letterSpacing: 0),
+            decoration: InputDecoration(prefixIcon: const Icon(Icons.search),
+              isDense: true, contentPadding: widget.sekmeIcinde ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8) : null,
+              prefixIconConstraints: widget.sekmeIcinde ? const BoxConstraints(minWidth: 40, minHeight: 40) : null,
+              hintText: 'Ad, soyad veya okul no ara'), onChanged: (v) => setState(() => _ogrenciArama = v)),
+          if (!widget.sekmeIcinde) const SizedBox(height: 8),
+          if (!widget.sekmeIcinde) FilledButton.icon(onPressed: _ogrenciler.isEmpty ? null : () => _bolumSec(1),
             icon: const Icon(Icons.print_outlined), label: const Text('Liste Tasarla / Yazdır')),
         ]))),
       if (gorunenler.isEmpty) SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(
@@ -707,22 +804,28 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
             cells: [DataCell(Text('${o['OkulNo']}')), DataCell(Text('${o['Ad']} ${o['Soyad']}')),
               DataCell(Text('${o['SinifKodu']}'))])])) )
       else SliverList.builder(itemCount: gorunenler.length, itemBuilder: (_, i) => _ogrenciSatiri(gorunenler[i])),
-      const SliverToBoxAdapter(child: SizedBox(height: 12)),
+      SliverToBoxAdapter(child: SizedBox(height: widget.sekmeIcinde ? 84 : 12)),
     ]);
   }
 
   Widget _ogrenciSatiri(Map<String, Object?> o) {
     final secili = o['OgrenciId'] == _seciliOgrenciId;
     return Card(margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      color: secili ? Theme.of(context).colorScheme.primaryContainer : null,
-      child: ListTile(selected: secili, isThreeLine: _gorunum == 1,
+      elevation: widget.sekmeIcinde ? .7 : 0,
+      shadowColor: Theme.of(context).colorScheme.shadow.withValues(alpha: .1),
+      color: secili ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surface,
+      child: ListTile(selected: secili, isThreeLine: _gorunum == 1, dense: widget.sekmeIcinde,
+        minTileHeight: widget.sekmeIcinde && _gorunum == 0 ? 56 : null,
+        minVerticalPadding: widget.sekmeIcinde ? 4 : null,
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: widget.sekmeIcinde ? 0 : 4),
         onLongPress: () => setState(() {
           _silmeSecimModu = true;
           _seciliOgrenciId = secili ? null : o['OgrenciId'] as int;
         }),
         leading: OgrenciFotoWidget(fotoYolu: o['DosyaYolu'] as String?,
           fotoVerisi: o['FotoVerisi'] as Uint8List?, yerel: true, width: 40, height: 40),
-        trailing: PopupMenuButton<String>(tooltip: 'Öğrenci işlemleri',
+        trailing: widget.sekmeIcinde ? Icon(Icons.chevron_right, size: 22,
+          color: Theme.of(context).colorScheme.onSurface) : PopupMenuButton<String>(tooltip: 'Öğrenci işlemleri',
           onSelected: (v) { if (v == 'cikar') _ogrenciyiSiniftanCikar(o); },
           itemBuilder: (_) => const [PopupMenuItem(value: 'cikar', child: ListTile(
             dense: true, leading: Icon(Icons.person_remove_outlined), title: Text('Listeden çıkar')))]),
@@ -733,9 +836,10 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
           }); } else { _detayAc(o['OgrenciId'] as int); }
         },
         title: Text('${o['Ad']} ${o['Soyad']}', maxLines: 1, overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.titleSmall),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14, height: 1.2, fontWeight: FontWeight.w800, letterSpacing: 0)),
         subtitle: Text('Sınıf: ${o['SinifKodu']} • No: ${o['OkulNo']}${_gorunum == 1 ? '\nCinsiyet: ${o['Cinsiyet'] ?? "Belirtilmedi"}' : ""}',
-          maxLines: 2, overflow: TextOverflow.ellipsis)));
+          maxLines: 2, overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 12, height: 1.2, letterSpacing: 0))));
   }
   Widget _tasarimAlani() => ListView(padding: const EdgeInsets.all(12), children: [
     DropdownButtonFormField<String>(key: ValueKey('sablon-$_surum'), isExpanded: true,
