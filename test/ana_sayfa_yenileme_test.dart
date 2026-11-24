@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -27,6 +28,7 @@ import 'package:elpi_okul_yonetim/services/bireysel_profil_service.dart';
 import 'package:elpi_okul_yonetim/services/baslangic_belgeleri_service.dart';
 import 'package:elpi_okul_yonetim/widgets/ana_sayfa_gorunumu.dart';
 import 'support/windows_memory_database.dart';
+import 'package:elpi_okul_yonetim/widgets/ogrenci_foto_widget.dart';
 
 class _Yollar extends PathProviderPlatform {
   _Yollar(this.path);
@@ -330,6 +332,49 @@ void main() {
     );
     expect(t.takeException(), isNull);
   });
+  for (final width in [320.0, 390.0, 800.0]) {
+    testWidgets('$width px arama büyük fotoğraflı karttır; klavyede alan bilgisi korunur', (t) async {
+      const uzunAlan = 'BİLİŞİM TEKNOLOJİLERİ ALANI';
+      await db.update('SinifSube', {'Alan': uzunAlan}, where: 'SinifSubeId=1');
+      final png = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=');
+      await db.insert('OgrenciFotograf', {'OgrenciId': 1, 'DosyaYolu': '', 'FotoVerisi': png, 'OlusturmaTarihi': 'test'});
+      await ac(t, width: width);
+      final onceki = await db.query('Ogrenci');
+      final arama = find.byKey(const ValueKey('sabit-ogrenci-arama'));
+      await menu(t, 'Öğrenci ara');
+      await t.enterText(arama, 'Ada');
+      await t.pumpAndSettle();
+      await t.pumpWidget(app(yazi: width == 320 ? 1.6 : 1));
+      await t.pumpAndSettle();
+      for (final sorgu in ['Ada', 'Yılmaz', '125', '9-A', 'BİLİŞİM']) {
+        await t.enterText(arama, sorgu);
+        await t.pumpAndSettle();
+        final foto = find.byKey(const ValueKey('ana-arama-foto:1:9-A'));
+        expect(foto, findsOneWidget);
+        expect(t.getSize(foto).width, greaterThanOrEqualTo(130));
+        expect(t.getSize(foto).height, greaterThanOrEqualTo(170));
+        expect(t.widget<OgrenciFotoWidget>(find.byType(OgrenciFotoWidget)).fotoVerisi, png);
+        expect(find.text('Ada Yılmaz'), findsOneWidget);
+        expect(find.text('No: 125'), findsOneWidget);
+        expect(find.text('Sınıf: 9-A'), findsOneWidget);
+        expect(find.text(uzunAlan), findsOneWidget);
+      }
+      await gorsel(t, 'arama_buyuk_kart_${width.toInt()}');
+      t.view.viewInsets = const FakeViewPadding(bottom: 280);
+      addTearDown(t.view.resetViewInsets);
+      await t.pumpAndSettle();
+      expect(t.getBottomRight(arama).dy, lessThanOrEqualTo(844 - 280));
+      await t.drag(find.byType(ListView).first, const Offset(0, -200));
+      await t.pumpAndSettle();
+      expect(find.text(uzunAlan).hitTestable(), findsOneWidget);
+      expect(t.takeException(), isNull);
+      await t.tap(find.byTooltip('Temizle'));
+      await t.pumpAndSettle();
+      expect(find.byKey(const ValueKey('ana-arama-kart:1:9-A')), findsNothing);
+      expect(await db.query('Ogrenci'), onceki);
+    });
+  }
+
   testWidgets('arama ders kapsamındaki öğrenciyi bulur; geri aramayı kapatır', (
     t,
   ) async {

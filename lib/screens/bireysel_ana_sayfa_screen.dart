@@ -1020,17 +1020,56 @@ class _BireyselAnaSayfaScreenState extends State<BireyselAnaSayfaScreen>
             if (alan.isNotEmpty) alan,
           ].join(' • ');
 
-          return ListTile(
-            leading: OgrenciFotoWidget(
-              fotoYolu: ogrenci['DosyaYolu'] as String?,
-              fotoVerisi: ogrenci['FotoVerisi'] as Uint8List?,
-              yerel: true,
-              width: 40,
-              height: 40,
+          return Center(child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: Card(
+              key: ValueKey('ana-arama-kart:${ogrenci['OgrenciId']}:$sinif'),
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Padding(padding: const EdgeInsets.all(OrtakUi.bosluk),
+                child: LayoutBuilder(builder: (context, limits) {
+                  final renkler = Theme.of(context).colorScheme;
+                  final metinler = Theme.of(context).textTheme;
+                  final dikey = limits.maxWidth < 300 || MediaQuery.textScalerOf(context).scale(14) > 20;
+                  final fotoGenislik = dikey ? 160.0 : 136.0;
+                  final fotoYukseklik = dikey ? 200.0 : 176.0;
+                  final foto = Semantics(image: true, label: 'Öğrenci fotoğrafı',
+                    child: Container(
+                      key: ValueKey('ana-arama-foto:${ogrenci['OgrenciId']}:$sinif'),
+                      width: fotoGenislik, height: fotoYukseklik,
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(color: renkler.primaryContainer.withValues(alpha: .4),
+                        borderRadius: BorderRadius.circular(OrtakUi.radius),
+                        border: Border.all(color: renkler.outlineVariant)),
+                      child: OgrenciFotoWidget(
+                        fotoYolu: ogrenci['DosyaYolu'] as String?,
+                        fotoVerisi: ogrenci['FotoVerisi'] as Uint8List?,
+                        yerel: true, width: fotoGenislik, height: fotoYukseklik,
+                        daire: false, fit: BoxFit.contain,
+                      ),
+                    ));
+                  final bilgiler = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Tooltip(message: '$ad $soyad'.trim(), child: Text('$ad $soyad'.trim(),
+                      maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: metinler.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w700, letterSpacing: 0))),
+                    if (altBilgi.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      if (okulNo.isNotEmpty) Text('No: $okulNo', style: metinler.bodyMedium),
+                      if (sinif.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4),
+                        child: Text('Sınıf: $sinif', style: metinler.bodyMedium)),
+                      if (alan.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8),
+                        child: Text(alan, style: metinler.bodyMedium?.copyWith(color: renkler.onSurfaceVariant))),
+                    ],
+                  ]);
+                  if (dikey) {
+                    return Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [Center(child: foto), const SizedBox(height: 16), bilgiler]);
+                  }
+                  return Row(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [foto, const SizedBox(width: 16), Expanded(child: bilgiler)]);
+                }),
+              ),
             ),
-            title: Text('$ad $soyad'.trim()),
-            subtitle: altBilgi.isEmpty ? null : Text(altBilgi),
-          );
+          ));
         },
       ),
     );
