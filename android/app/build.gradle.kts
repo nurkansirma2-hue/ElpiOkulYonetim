@@ -8,7 +8,7 @@ plugins {
 val testApk = System.getenv("OKUL_TEST_APK") == "true"
 
 // İmzalama anahtarı makineye özel debug.keystore yerine güvenli ortamdan verilebilir.
- // Anahtar dosyası/parolaları GitHub'a konulmaz; tüm değerler birlikte sağlanmalıdır.
+// Anahtar dosyası/parolaları GitHub'a konulmaz; tüm değerler birlikte sağlanmalıdır.
 val okulStorePath = System.getenv("OKUL_SIGNING_STORE_FILE")
 val okulStorePassword = System.getenv("OKUL_SIGNING_STORE_PASSWORD")
 val okulKeyAlias = System.getenv("OKUL_SIGNING_KEY_ALIAS")
