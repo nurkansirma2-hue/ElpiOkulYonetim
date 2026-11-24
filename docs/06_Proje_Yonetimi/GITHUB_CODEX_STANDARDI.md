@@ -45,3 +45,16 @@ Proje genelinde arama, çoklu dosya değişikliği, bağımlılık analizi, yere
 Basit OKU/YAZ işleri gereksiz yere Codex’e taşınmaz. Kullanıcı zaten uygun ortamda çalışıyorsa yeniden araç seçmesi istenmez.
 
 Codex işi tamamlandığında ana geliştirme görüşmesine ChatGPT Projesinde devam etmek için gerekli kısa sonuç ve durum aktarılır.
+
+## 34. CHATGPT – GITHUB – CODEX CLOUD SENKRONİZASYON GÜVENLİĞİ
+
+1. GitHub `master` dalı projenin tek ana kaynağıdır. Bu, başka bir ortamda henüz GitHub'a gönderilmemiş kullanıcı değişikliklerini silme veya yok sayma izni değildir.
+2. ChatGPT ve Codex Cloud, erişebildikleri ölçüde her kod değişikliği öncesinde GitHub'ın güncel hedef dal commit kimliğini ve kendi çalışma kopyalarının hangi commit'e dayandığını doğrular. Doğrulama yapılamıyorsa bunun nedeni raporlanır; eşitlik varsayılmaz.
+3. Çalışma ortamı ile GitHub farklı commit'lerdeyse önce commit ve ilgili dosya farkları incelenir. Eski koddan yeni kodun üzerine körlemesine yazılmaz.
+4. Kaydedilmemiş çalışmalar, kullanıcıya ait yerel değişiklikler, mevcut branch'ler ve açık PR'lar korunur. Bunlar otomatik silinmez, sıfırlanmaz veya ezilmez.
+5. Codex Cloud'da önceden açılmış bir oturumun, GitHub'a yapılan yeni commit'lerle otomatik eşitlendiği varsayılmaz. Görev başlangıcında ve GitHub'a yazmadan önce güncellik yeniden kontrol edilir.
+6. Çakışma varsa otomatik üzerine yazma, force push, reset, clean veya yetkisiz merge/rebase yapılmaz. Güvenle uzlaştırılamayan fark kullanıcıya bildirilir ve riskli işlem durdurulur.
+7. GitHub'a yazmadan hemen önce hedef dalın son commit'i ve değiştirilecek dosyaların güncel sürümleri tekrar kontrol edilir. Yalnızca onaylanan kapsam yazılır; uzaktaki yeni değişiklikler korunur.
+8. `UYGULA` çalışma ortamında onaylı geliştirme kapsamına izin verir; GitHub'da commit/push için ayrıca açık `YAZ` gerekir. `D`, `OKU` veya test başarısı bu yetkiyi vermez.
+9. İşlem sonunda kaynak ve hedef commit kimlikleri, senkronizasyonun doğrulanıp doğrulanmadığı, yazılan dosyalar ve varsa çakışma veya erişim sınırlamaları kısa biçimde raporlanır.
+10. Bu güvenlik kuralları hem ChatGPT hem Codex çalışmalarında geçerlidir. Sürekli/otomatik bulut eşitlemesi vaat etmez; mevcut üst standartları ve yetki sınırlarını değiştirmez.
