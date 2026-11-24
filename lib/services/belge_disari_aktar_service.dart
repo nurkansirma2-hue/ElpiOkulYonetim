@@ -34,22 +34,31 @@ class BelgeDisariAktarService {
     ImportTanimi tanim,
     List<ImportKaydi> kayitlar, {
     bool sablon = false,
-  }) => Isolate.run(() {
+  }) {
+    final fields = tanim.alanlar.where((f) => f.kolondan).toList();
+    // Callback'ler servis/veritabanı tutabilir; isolate'a yalnız metin gönder.
+    return _excelKodla([
+      fields.map((f) => f.ad).toList(),
+      for (final row in kayitlar)
+        fields.map((f) => row.degerler[f.anahtar] ?? '').toList(),
+    ], sablon ? tanim.aciklama : null);
+  }
+
+  static Future<Uint8List> _excelKodla(
+    List<List<String>> satirlar,
+    String? aciklama,
+  ) => Isolate.run(() {
     final excel = Excel.createExcel();
     final sheet = excel['Sheet1'];
-    final fields = tanim.alanlar.where((f) => f.kolondan).toList();
-    sheet.appendRow(fields.map((f) => f.ad).toList());
-    for (final row in kayitlar) {
-      // Metin hücreleri kaynakta '=' olsa da formül olarak çalıştırılmaz.
-      sheet.appendRow(
-        fields.map((f) => row.degerler[f.anahtar] ?? '').toList(),
-      );
+    for (final satir in satirlar) {
+      // Metinler '=' ile başlasa da formül olarak çalıştırılmaz.
+      sheet.appendRow(satir);
     }
-    if (sablon) {
+    if (aciklama != null) {
       excel['Rehber'].appendRow([
         'Bu dosya rehberdir. Mevcut farklı düzenler de import ön izlemesinde eşleştirilebilir.',
       ]);
-      excel['Rehber'].appendRow([tanim.aciklama]);
+      excel['Rehber'].appendRow([aciklama]);
     }
     return Uint8List.fromList(excel.encode()!);
   });

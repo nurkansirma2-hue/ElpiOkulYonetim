@@ -1,7 +1,8 @@
-// Testler Windows'un SQLite kitaplığını yalnız :memory: veritabanında kullanır.
+// Testler işletim sisteminin SQLite kitaplığını yalnız :memory: üzerinde kullanır.
 // Kullanıcının veritabanına erişilmez; uygulama bağımlılıkları değişmez.
 import 'dart:convert';
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:sqflite/sqflite.dart';
 // sqflite varsayılan fabrika için bu iç arayüzü zorunlu tutuyor; yalnız testte.
@@ -28,7 +29,13 @@ class WindowsMemoryFactory implements SqfliteDatabaseFactory {
 }
 
 class WindowsMemoryDatabase implements Database, Transaction {
-  final _lib = DynamicLibrary.open('winsqlite3.dll');
+  final _lib = DynamicLibrary.open(
+    Platform.isWindows
+        ? 'winsqlite3.dll'
+        : Platform.isMacOS
+        ? 'libsqlite3.dylib'
+        : 'libsqlite3.so.0',
+  );
   late final _malloc = _lib
       .lookupFunction<
         Pointer<Void> Function(Int32),

@@ -536,8 +536,8 @@ void main() {
     expect(find.text('Ada Dokuz'), findsOneWidget);
     expect(find.text('Sınıf: 9-A • No: 2'), findsOneWidget);
     final listeKaydirma = find.descendant(
-      of: find.byType(ListView), matching: find.byType(Scrollable),
-    );
+      of: find.byType(CustomScrollView), matching: find.byType(Scrollable),
+    ).first;
     await tester.scrollUntilVisible(find.text('Bora On'), 150,
       scrollable: listeKaydirma);
     await tester.ensureVisible(find.text('Bora On'));
@@ -807,8 +807,8 @@ void main() {
     expect(find.text('5 öğrenci'), findsOneWidget);
     expect(find.text('Ada Dokuz'), findsOneWidget);
     final listeKaydirma = find.descendant(
-      of: find.byType(ListView), matching: find.byType(Scrollable),
-    );
+      of: find.byType(CustomScrollView), matching: find.byType(Scrollable),
+    ).first;
     await tester.scrollUntilVisible(find.text('Cem Yeni'), 150,
       scrollable: listeKaydirma);
     await tester.ensureVisible(find.text('Cem Yeni'));

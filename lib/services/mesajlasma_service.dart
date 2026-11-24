@@ -17,6 +17,7 @@ import 'bireysel_rehberlik_service.dart';
 part 'mesaj_form_service.dart';
 part 'mesaj_sablon_service.dart';
 part 'mesaj_alici_service.dart';
+part 'veli_bilgileri_service.dart';
 part 'mesaj_ogretmen_import_service.dart';
 
 /// Modüller kaynakModul/kaynakKayit, metin ve öğrenci kimlikleri sağlar.
