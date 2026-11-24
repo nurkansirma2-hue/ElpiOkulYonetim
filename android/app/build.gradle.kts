@@ -7,6 +7,20 @@ plugins {
 
 val testApk = System.getenv("OKUL_TEST_APK") == "true"
 
+// İmzalama anahtarı makineye özel debug.keystore yerine güvenli ortamdan verilebilir.
+ // Anahtar dosyası/parolaları GitHub'a konulmaz; tüm değerler birlikte sağlanmalıdır.
+val okulStorePath = System.getenv("OKUL_SIGNING_STORE_FILE")
+val okulStorePassword = System.getenv("OKUL_SIGNING_STORE_PASSWORD")
+val okulKeyAlias = System.getenv("OKUL_SIGNING_KEY_ALIAS")
+val okulKeyPassword = System.getenv("OKUL_SIGNING_KEY_PASSWORD")
+val okulSigningValues = listOf(
+    okulStorePath, okulStorePassword, okulKeyAlias, okulKeyPassword
+)
+val okulSigningConfigured = okulSigningValues.all { !it.isNullOrBlank() }
+require(okulSigningValues.all { it.isNullOrBlank() } || okulSigningConfigured) {
+    "OKUL_SIGNING_* ayarları eksik: dört imzalama değişkenini birlikte tanımlayın."
+}
+
 android {
     namespace = "com.example.elpi_okul_yonetim"
     compileSdk = flutter.compileSdkVersion
@@ -40,11 +54,31 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (okulSigningConfigured) {
+            create("okulSabit") {
+                storeFile = file(okulStorePath!!)
+                storePassword = okulStorePassword!!
+                keyAlias = okulKeyAlias!!
+                keyPassword = okulKeyPassword!!
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (okulSigningConfigured) {
+                signingConfig = signingConfigs.getByName("okulSabit")
+            }
+        }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Eski derlemeleri bozmamak için anahtar verilmediyse mevcut davranış korunur.
+            // Kalıcı dağıtımda OKUL_SIGNING_* ile aynı güvenli anahtar kullanılmalıdır.
+            signingConfig = if (okulSigningConfigured) {
+                signingConfigs.getByName("okulSabit")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
