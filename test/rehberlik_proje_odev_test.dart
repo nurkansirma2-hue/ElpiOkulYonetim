@@ -299,6 +299,27 @@ void main() {
     await LocalDatabase.instance.close();
   });
 
+  Future<int> projeFormu(Map<int, String> secim) async {
+    final id = await fs.formOlustur(
+      fb,
+      baslik: 'Sınıfın proje dersleri',
+      ogrenciListesi: true,
+      hedefTuru: 'OgrenciSec',
+      ogrenciIdleri: {1, 2, 3},
+      sorular: [
+        for (var i = 1; i <= 3; i++)
+          BilgiToplamaSorusu(
+            anahtar: 'projeTercih$i',
+            baslik: '$i. Ders',
+            veriTuru: 'Secenek',
+            zorunlu: true,
+            secenekler: secim.values.toList(),
+          ),
+      ],
+    );
+    await s.projeFormunuBagla(b, 1, id, secim, 'Açıklama');
+    return id;
+  }
   Future<void> yanit(
     int oid,
     List<int> secim, {
@@ -975,27 +996,6 @@ void main() {
     },
   );
 
-  Future<int> projeFormu(Map<int, String> secim) async {
-    final id = await fs.formOlustur(
-      fb,
-      baslik: 'Sınıfın proje dersleri',
-      ogrenciListesi: true,
-      hedefTuru: 'OgrenciSec',
-      ogrenciIdleri: {1, 2, 3},
-      sorular: [
-        for (var i = 1; i <= 3; i++)
-          BilgiToplamaSorusu(
-            anahtar: 'projeTercih$i',
-            baslik: '$i. Ders',
-            veriTuru: 'Secenek',
-            zorunlu: true,
-            secenekler: secim.values.toList(),
-          ),
-      ],
-    );
-    await s.projeFormunuBagla(b, 1, id, secim, 'Açıklama');
-    return id;
-  }
 
   test(
     'silinen form proje listesinden çıkar; eski dağıtım ve mesaj kullanılamaz',
