@@ -71,7 +71,8 @@ class _VeliBilgileriScreenState extends State<VeliBilgileriScreen> {
 
   Future<void> _hazirla() => _islem(() async {
     final b = await _service.hazirla();
-    final siniflar = await _service.mesajSiniflari(b);
+    // sqflite sonuçları salt okunurdur; yalnız ekranın kopyasını sırala.
+    final siniflar = (await _service.mesajSiniflari(b)).toList();
     siniflar.sort((a, b) {
       final aa = a['SinifKodu'].toString(), bb = b['SinifKodu'].toString();
       final n = _seviye(aa).compareTo(_seviye(bb));

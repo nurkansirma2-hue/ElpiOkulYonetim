@@ -17,6 +17,37 @@ import 'package:elpi_okul_yonetim/screens/veli_bilgileri_screen.dart';
 import 'package:elpi_okul_yonetim/screens/bireysel_ogrenci_islemleri_screen.dart';
 import 'support/windows_memory_database.dart';
 import 'package:elpi_okul_yonetim/widgets/ortak_ui.dart';
+// Android sqflite'nin döndürdüğü gerçek salt okunur sonuç türü; yalnız testte.
+// ignore: implementation_imports, depend_on_referenced_packages
+import 'package:sqflite_common/src/collection_utils.dart';
+
+class _AndroidSonucVeritabani extends WindowsMemoryDatabase {
+  @override
+  Future<List<Map<String, Object?>>> rawQuery(
+    String sql, [
+    List<Object?>? arguments,
+  ]) async {
+    final rows = await super.rawQuery(sql, arguments);
+    final columns = rows.isEmpty ? <String>[] : rows.first.keys.toList();
+    return QueryResultSet(columns, [
+      for (final row in rows) [for (final key in columns) row[key]],
+    ]);
+  }
+}
+
+class _AndroidSonucFabrikasi extends WindowsMemoryFactory {
+  @override
+  Future<Database> openDatabase(
+    String path, {
+    OpenDatabaseOptions? options,
+  }) async {
+    final database = db = _AndroidSonucVeritabani();
+    await options?.onConfigure?.call(database);
+    await options?.onCreate?.call(database, options.version!);
+    await options?.onOpen?.call(database);
+    return database;
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -27,7 +58,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({'calisma_modu': 'bireysel'});
     await LocalDatabase.instance.close();
-    databaseFactory = WindowsMemoryFactory();
+    databaseFactory = _AndroidSonucFabrikasi();
     db = await LocalDatabase.instance.database;
     mod = CalismaModu.bireyselOgretmen;
     service = MesajlasmaService(
@@ -97,6 +128,69 @@ void main() {
     return service.veliOnizle(b, 1, [
       ImportKaynakSatiri('1', 'satır 2', {...row, ...patch}),
     ], beklenen: beklenen);
+  }
+
+  for (final excel in [false, true]) {
+    testWidgets(
+      'Android salt okunur sınıf sonucuyla ${excel ? "Excel" : "hızlı giriş"} açılır',
+      (t) async {
+        await db.insert('SinifSube', {
+          'SinifSubeId': 2,
+          'SinifKodu': '10-B',
+          'EgitimOgretimYili': b.yil,
+          'OlusturmaTarihi': 'test',
+        });
+        await db.insert('DersProgrami', {
+          'SinifSubeId': 2,
+          'DersId': 1,
+          'DersSaatiId': 1,
+          'Gun': 'Salı',
+          'OgretmenProfilId': 1,
+          'EgitimOgretimYili': b.yil,
+          'OlusturmaTarihi': 'test',
+        });
+        final kaynak = await service.mesajSiniflari(b);
+        expect(kaynak, isA<QueryResultSet>());
+        expect(kaynak.map((s) => s['SinifKodu']), ['10-B', '9-C']);
+        expect(
+          () => kaynak.sort((a, b) => 0),
+          throwsA(
+            isA<UnsupportedError>().having(
+              (e) => e.message,
+              'özgün Android hatası',
+              'read-only',
+            ),
+          ),
+        );
+        final onceki = await db.query('Ogrenci');
+        await t.pumpWidget(
+          MaterialApp(
+            home: VeliBilgileriScreen(service: service, excel: excel),
+          ),
+        );
+        await t.pumpAndSettle();
+        expect(find.textContaining('Unsupported operation'), findsNothing);
+        expect(find.text('Yeniden Dene'), findsNothing);
+        expect(find.text('9-C'), findsWidgets);
+        expect(
+          t
+              .widget<DropdownButtonFormField<int>>(
+                find.byKey(const ValueKey('seviye:9')),
+              )
+              .initialValue,
+          9,
+        );
+        if (excel) {
+          expect(find.text('Dolu Şablonu İndir (9-C)'), findsOneWidget);
+        } else {
+          expect(find.text('001 - Ali Test'), findsOneWidget);
+          expect(find.text('9-C / 1 öğrenci'), findsOneWidget);
+        }
+        expect(kaynak.map((s) => s['SinifKodu']), ['10-B', '9-C']);
+        expect(await db.query('Ogrenci'), onceki);
+        expect(t.takeException(), isNull);
+      },
+    );
   }
 
   test('boş Excel hücreleri silmez, kimlik ve diğer veli korunur', () async {
