@@ -95,7 +95,7 @@ class _BireyselYedeklemeScreenState extends State<BireyselYedeklemeScreen> {
         barrierDismissible: false,
         builder: (_) => _GeriYuklemeOnayi(info: info),
       );
-      if (onay != 'GERİ YÜKLE' || !mounted) return;
+      if (onay != 'GY' || !mounted) return;
       setState(
         () => _durum = 'Koruma yedeği alınıyor ve veriler geri yükleniyor...',
       );
@@ -369,7 +369,7 @@ class _GeriYuklemeOnayiState extends State<_GeriYuklemeOnayi> {
         const Text(
           'Mevcut tüm bireysel veriler bu yedekteki verilerle değiştirilecek. '
           'Belgelerim de yedekteki duruma dönecek. Önceki durumun koruma yedeği alınacak. '
-          'Onaylamak için GERİ YÜKLE yazın.',
+          'Onaylamak için GY yazın.',
         ),
         const SizedBox(height: 16),
         TextField(
@@ -378,7 +378,7 @@ class _GeriYuklemeOnayiState extends State<_GeriYuklemeOnayi> {
           autocorrect: false,
           enableSuggestions: false,
           decoration: const InputDecoration(
-            labelText: 'GERİ YÜKLE',
+            labelText: 'GY',
             border: OutlineInputBorder(),
           ),
         ),
@@ -390,8 +390,8 @@ class _GeriYuklemeOnayiState extends State<_GeriYuklemeOnayi> {
         child: const Text('İptal'),
       ),
       FilledButton(
-        onPressed: _text.text == 'GERİ YÜKLE'
-            ? () => Navigator.pop(context, 'GERİ YÜKLE')
+        onPressed: _text.text.trim().toUpperCase() == 'GY'
+            ? () => Navigator.pop(context, 'GY')
             : null,
         child: const Text('Onayla ve Geri Yükle'),
       ),
