@@ -899,8 +899,8 @@ class BireyselBakimService {
     required String onayMetni,
   }) => _sirali(() async {
     await _yetki();
-    if (onayMetni != 'GERİ YÜKLE') {
-      throw StateError('GERİ YÜKLE onayı gereklidir.');
+    if (onayMetni.trim().toUpperCase() != 'GY') {
+      throw StateError('GY onayı gereklidir.');
     }
     final m = await _paketiOku(yedek.dosya.path), db = await _db();
     await _dogrula(db, m);
