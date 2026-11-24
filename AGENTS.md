@@ -44,6 +44,15 @@ Her proje görevinde aşağıdaki temel belgelerin güncel içeriklerini oku; ar
 
 Flutter ekranı oluşturulurken veya değiştirilirken docs/03_Tasarim/UI_STANDARDI.md okunur; mevcut ortak UI bileşenleri kullanılır. Form işlemlerinde FORM_MODULU_STANDARTI ve GOOGLE_FORM_HESAP_VE_YETKI_STANDARDI birlikte okunur. Form paylaşımı veya mesajlaşma bağlantısı varsa MESAJLASMA_STANDARTI da okunur. Google Forms işlemleri etkin kullanıcının kendi Google hesabının gerçek izinleri ve uygulama kapsamı doğrulanarak yürütülür; geliştiricinin kişisel hesabına bağımlı varsayılmaz. Ortak liste standardı otomatik genel dönüşüm yetkisi değildir. GitHub işlemlerinde GitHub/Codex standardı zorunludur. Yeni standart eklendiğinde yönlendirme tablosu kullanıcı onayıyla güncellenir.
 
+## Zorunlu veri sürekliliği — kritik koruma
+
+- **Temel ilke:** Uygulama kaldığı yerden devam eder; mevcut kullanıcı veritabanı ve yedekler güncelleme, APK, kod, migration veya Git senkronizasyonu nedeniyle otomatik sıfırlanmaz, silinmez, boş veritabanıyla değiştirilmez.
+- Bireysel SQLite ve kurumsal SQL Server verileri ayrı korunur. Mod değiştirmek veri silmez. Hata durumunda sessizce boş veritabanına geçilmez.
+- Veri etkili şema değişikliklerinde doğrulanmış geri dönüş yedeği, sürümlü veri koruyan migration ve gerekli kayıt/uyumluluk testleri şarttır. Yedekleme kaynak veriyi değiştirmez; geri yükleme mevcut veritabanını otomatik ezmez.
+- **Genel `YAZ` komutu veri silmeye/sıfırlamaya, veri kaybettiren migration'a veya mevcut veri üzerine geri yüklemeye izin vermez.** Bunlar için riskleri gösteren ayrıca açık ve özel kullanıcı onayı gerekir.
+- Test APK'sı ve gerçek uygulama verileri ayrıdır. Uygulama kaldırma, cihaz kaybı ve benzeri durumlar için bağımsız yedek gerekir.
+- Her veritabanı/yedek görevi için ayrıntılı ve bağlayıcı [VERITABANI_STANDARDI.md](docs/02_Mimari/VERITABANI_STANDARDI.md) okunur. Yapılmayan veri koruma veya geri yükleme testi başarılı sayılmaz.
+
 ## SON İLKE
 
 Kullanıcı AI’yı yönetmekle uğraşmamalı; projesini yönetmelidir.
