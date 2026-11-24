@@ -510,7 +510,6 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
         top: false,
         child: Column(
           children: [
-            if (widget.sekmeIcinde && !_klavyeAcik) _araclar(),
             Expanded(child: _icerik()),
           ],
         ),
@@ -557,11 +556,7 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
     final renk = Theme.of(context).colorScheme;
     final ogrenciVar = _oturum != null && _oturum!.siniflar.isNotEmpty;
     final silinebilir = _bolum == 0 && _ogrenciler.isNotEmpty;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: PopupMenuButton<String>(
+    return PopupMenuButton<String>(
           key: const ValueKey('ogrenci-islemler-menusu'),
           tooltip: 'Öğrenci işlemleri',
           enabled: !_bekle,
@@ -582,6 +577,8 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
                 _ogrenciSil();
               case 'yenile':
                 await _hazirla(secimiKoru: true);
+              case 'sirala':
+                setState(() => _artan = !_artan);
               case 'veli':
                 await _veliAc();
               case 'aktar':
@@ -615,6 +612,9 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
             const PopupMenuItem(value: 'yenile', child: ListTile(
                 dense: true, leading: Icon(Icons.refresh),
                 title: Text('Yenile'))),
+            const PopupMenuItem(value: 'sirala', child: ListTile(
+                dense: true, leading: Icon(Icons.sort_by_alpha),
+                title: Text('Sıralamayı Değiştir'))),
             const PopupMenuDivider(),
             const PopupMenuItem(value: 'detay', child: ListTile(
                 dense: true, leading: Icon(Icons.info_outline),
@@ -636,23 +636,22 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
                 title: Text('Raporlar / Tasarım'))),
           ],
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
             decoration: BoxDecoration(
               border: Border.all(color: renk.outlineVariant),
               borderRadius: BorderRadius.circular(12),
               color: renk.surface,
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.settings_outlined, size: 18, color: renk.primary),
-              const SizedBox(width: 8),
-              Text('İşlemler', style: TextStyle(
-                fontWeight: FontWeight.w700, color: renk.onSurface)),
-              const SizedBox(width: 4),
-              Icon(Icons.arrow_drop_down, size: 18, color: renk.onSurface),
+              Icon(Icons.settings_outlined, size: 16, color: renk.primary),
+              const SizedBox(width: 3),
+              Flexible(child: Text('İşlemler', maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11.5,
+                  fontWeight: FontWeight.w700, color: renk.onSurface))),
+              Icon(Icons.arrow_drop_down, size: 15, color: renk.onSurface),
             ]),
           ),
-        ),
-      ),
     );
   }
 
@@ -701,59 +700,102 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
   Widget _sinifFiltreleri() {
     final seviye = _sinif == null ? 0 : _sinifSeviyesi(_sinif!.sinif);
     final seviyeler = _oturum!.siniflar.map((s) => _sinifSeviyesi(s.sinif)).toSet().toList()..sort();
-    final stil = Theme.of(context).textTheme.bodyMedium!.copyWith(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0);
-    Widget alan(String etiket, Widget child) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Padding(padding: const EdgeInsets.only(left: 4, bottom: 4), child: Text(etiket,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 12, letterSpacing: 0))),
-      child,
-    ]);
-    InputDecoration dekor() => const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9), constraints: BoxConstraints(minHeight: 44));
-    return Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 4), child: LayoutBuilder(builder: (c, limits) {
-      final sinif = alan('Sınıf', DropdownButtonFormField<int>(key: ValueKey('liste-seviye:$seviye'),
-        initialValue: seviye, isExpanded: true, style: stil, iconSize: 18, decoration: dekor(),
-        items: [const DropdownMenuItem(value: 0, child: Text('Tüm Sınıflar', maxLines: 1, overflow: TextOverflow.ellipsis)),
-          for (final n in seviyeler) DropdownMenuItem(value: n, child: Text('$n. Sınıf'))],
-        onChanged: (n) => _sinifSec(n == null || n == 0 ? 0 : _oturum!.siniflar.firstWhere((s) => _sinifSeviyesi(s.sinif) == n).sinifSubeId)));
-      final sube = alan('Şube', DropdownButtonFormField<int>(key: ValueKey('liste-sube:${_sinif?.sinifSubeId}'),
-        initialValue: _sinif?.sinifSubeId ?? 0, isExpanded: true, style: stil, iconSize: 18, decoration: dekor(),
-        items: [const DropdownMenuItem(value: 0, child: Text('Tümü')),
-          for (final s in _oturum!.siniflar.where((s) => seviye == 0 || _sinifSeviyesi(s.sinif) == seviye))
-            DropdownMenuItem(value: s.sinifSubeId, child: Text(s.sinif, maxLines: 1, overflow: TextOverflow.ellipsis))],
-        onChanged: _sinifSec));
-      final durum = alan('Durum', InputDecorator(decoration: dekor(), child: Text('Aktif', style: stil)));
-      final gerekli = (TextPainter(text: TextSpan(text: 'Tüm Sınıflar', style: stil),
-        textDirection: Directionality.of(c), textScaler: MediaQuery.textScalerOf(c))..layout()).width + 42;
-      if (gerekli > (limits.maxWidth - 16) * .44) {
-        return Column(children: [sinif, const SizedBox(height: 8),
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: sube), const SizedBox(width: 8), Expanded(child: durum)])]);
-      }
-      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(flex: 44, child: sinif), const SizedBox(width: 8),
-        Expanded(flex: 30, child: sube), const SizedBox(width: 8), Expanded(flex: 26, child: durum)]);
-    }));
+    final stil = Theme.of(context).textTheme.bodyMedium!.copyWith(
+      fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0);
+    Widget alan(String etiket, Widget child) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(padding: const EdgeInsets.only(left: 3, bottom: 3),
+          child: Text(etiket, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontSize: 11, letterSpacing: 0))),
+        child,
+      ],
+    );
+    InputDecoration dekor() => const InputDecoration(
+      isDense: true,
+      contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+      constraints: BoxConstraints(minHeight: 42),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      child: LayoutBuilder(builder: (context, limits) {
+        final sinif = alan('Sınıf', DropdownButtonFormField<int>(
+          key: ValueKey('liste-seviye:$seviye'),
+          initialValue: seviye, isExpanded: true, style: stil,
+          iconSize: 16, decoration: dekor(),
+          items: [
+            const DropdownMenuItem(value: 0, child: Text('Tüm Sınıflar',
+              maxLines: 1, overflow: TextOverflow.ellipsis)),
+            for (final n in seviyeler)
+              DropdownMenuItem(value: n, child: Text('$n. Sınıf')),
+          ],
+          onChanged: (n) => _sinifSec(n == null || n == 0 ? 0
+            : _oturum!.siniflar.firstWhere((s) => _sinifSeviyesi(s.sinif) == n).sinifSubeId),
+        ));
+        final sube = alan('Şube', DropdownButtonFormField<int>(
+          key: ValueKey('liste-sube:${_sinif?.sinifSubeId}'),
+          initialValue: _sinif?.sinifSubeId ?? 0,
+          isExpanded: true, style: stil, iconSize: 16, decoration: dekor(),
+          items: [
+            const DropdownMenuItem(value: 0, child: Text('Tümü')),
+            for (final s in _oturum!.siniflar.where(
+              (s) => seviye == 0 || _sinifSeviyesi(s.sinif) == seviye))
+                DropdownMenuItem(value: s.sinifSubeId,
+                  child: Text(s.sinif, maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: _sinifSec,
+        ));
+        final durum = alan('Durum', InputDecorator(
+          decoration: dekor(), child: Text('Aktif', style: stil,
+            maxLines: 1, overflow: TextOverflow.ellipsis)));
+        return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Expanded(flex: 42, child: sinif),
+          const SizedBox(width: 5),
+          Expanded(flex: 26, child: sube),
+          const SizedBox(width: 5),
+          Expanded(flex: 22, child: durum),
+          const SizedBox(width: 6),
+          SizedBox(width: limits.maxWidth < 370 ? 94 : 106,
+            child: _araclar()),
+        ]);
+      }),
+    );
   }
 
   Widget _gorunumSecimi() {
     final s = Theme.of(context).colorScheme;
-    return Container(key: const ValueKey('ogrenci-gorunumleri'),
-      decoration: BoxDecoration(color: s.surface, borderRadius: BorderRadius.circular(24),
+    final ikonlar = [Icons.format_list_bulleted,
+      Icons.grid_view_outlined, Icons.table_chart_outlined];
+    final adlar = ['Liste', 'Kart', 'Tablo'];
+    return Container(
+      key: const ValueKey('ogrenci-gorunumleri'),
+      decoration: BoxDecoration(color: s.surface,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: s.outlineVariant)),
-      child: Row(children: [for (var i = 0; i < 3; i++)
-        Expanded(child: Semantics(selected: _gorunum == i, button: true, child: Material(color: Colors.transparent,
-          child: InkWell(key: ValueKey('ogrenci-gorunum-$i'), borderRadius: BorderRadius.circular(24),
-            onTap: () => setState(() => _gorunum = i),
-            child: Ink(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(24),
-                gradient: _gorunum == i ? LinearGradient(colors: [Color.lerp(s.primary, Colors.cyan, .35)!, s.primary]) : null),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon([Icons.format_list_bulleted, Icons.grid_view_outlined, Icons.table_chart_outlined][i], size: 18,
-                  color: _gorunum == i ? s.onPrimary : s.onSurfaceVariant),
-                const SizedBox(width: 6), Flexible(child: Text(['Liste', 'Kart', 'Tablo'][i], maxLines: 1,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, letterSpacing: 0,
-                    fontWeight: _gorunum == i ? FontWeight.w700 : FontWeight.w500, color: _gorunum == i ? s.onPrimary : s.onSurface))),
-              ])),
-          )))),
-      ]));
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        for (var i = 0; i < 3; i++)
+          Tooltip(message: adlar[i], child: Semantics(
+            label: '${adlar[i]} görünümü', selected: _gorunum == i,
+            button: true, child: Material(color: Colors.transparent,
+              child: InkWell(
+                key: ValueKey('ogrenci-gorunum-$i'),
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => setState(() => _gorunum = i),
+                child: Ink(
+                  width: 38, height: 36,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: _gorunum == i ? s.primary : Colors.transparent),
+                  child: Icon(ikonlar[i], size: 18,
+                    color: _gorunum == i ? s.onPrimary : s.onSurfaceVariant),
+                ),
+              ),
+            ),
+          )),
+      ]),
+    );
   }
 
   Widget _icerik() => _bekle ? const Center(child: CircularProgressIndicator()) : _hata != null
@@ -784,23 +826,13 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
                   ? Row(children: [SizedBox(width: 420, child: _tasarimAlani()),
                       Expanded(child: _onIzleme())]) : _tasarimAlani()) : _onIzleme()),
             ]);
-  Widget _listeOzeti(int adet) => LayoutBuilder(builder: (context, limits) {
-    final stil = Theme.of(context).textTheme.titleMedium!.copyWith(
-      fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -.4);
-    final siraStili = Theme.of(context).textTheme.bodySmall!.copyWith(fontSize: 11, letterSpacing: 0);
-    final sayac = Text('$adet öğrenci', maxLines: 1, style: stil);
-    final siralama = TextButton(onPressed: () => setState(() => _artan = !_artan),
-      style: TextButton.styleFrom(minimumSize: const Size(48, 36), padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [Text('Sırala: Ad Soyad', style: siraStili),
-        const SizedBox(width: 4), Icon(_artan ? Icons.arrow_upward : Icons.arrow_downward, size: 14)]));
-    double olc(String metin, TextStyle style) => (TextPainter(text: TextSpan(text: metin, style: style),
-      textDirection: Directionality.of(context), textScaler: MediaQuery.textScalerOf(context))..layout()).width;
-    if (olc('$adet öğrenci', stil) + olc('Sırala: Ad Soyad', siraStili) + 30 > limits.maxWidth) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [sayac, Align(alignment: Alignment.centerRight, child: siralama)]);
-    }
-    return Row(children: [Expanded(child: sayac), siralama]);
-  });
+  Widget _listeOzeti(int adet) => Row(children: [
+    Expanded(child: Text('$adet öğrenci', maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+        fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -.4))),
+    _gorunumSecimi(),
+  ]);
 
   Widget _liste() {
     final filtre = _ogrenciArama.trim().toLowerCase();
@@ -814,7 +846,6 @@ class _BireyselListeEkraniState extends State<RaporOlusturScreen> {
       SliverToBoxAdapter(child: Padding(padding: EdgeInsets.fromLTRB(8, 8, 8, widget.sekmeIcinde ? 2 : 8), child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (widget.sekmeIcinde) ...[
-            _gorunumSecimi(), const SizedBox(height: 10),
             _listeOzeti(gorunenler.length),
           ] else Text('${gorunenler.length} öğrenci', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
